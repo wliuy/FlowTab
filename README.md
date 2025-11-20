@@ -2,9 +2,6 @@
 
 一个基于 Cloudflare Workers + KV 的极简主义、高性能个人导航页。
 
-![FlowTab Screenshot](path/to/your/screenshot.png)
-*(部署后请替换为你的截图)*
-
 ## ✨ 特性 (Features)
 
 * **☁️ 无服务器架构**：完全运行在 Cloudflare 的边缘节点，速度极快，且免费额度足够个人使用。
