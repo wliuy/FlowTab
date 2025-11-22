@@ -1,4 +1,10 @@
-// 1. 前端页面代码 (HTML/CSS/JS)
+/**
+ * FlowTab Cloudflare Worker Script
+ * 包含前端 HTML/CSS/JS 和后端 KV 存储逻辑
+ * 请将此文件全部内容复制到 Cloudflare Worker 编辑器中
+ */
+
+// 1. 定义前端 HTML 内容 (作为字符串常量)
 const HTML_CONTENT = `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -6,8 +12,8 @@ const HTML_CONTENT = `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FlowTab</title>
-    <!-- [Logo] Favicon - 初始加载 (JS会根据主题动态更新它) -->
-    <link rel="icon" id="dynamic-favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'><rect x='10' y='20' width='80' height='60' rx='12' fill='%2343b883' /><path d='M10 50 C 30 40, 70 80, 90 50' stroke='white' stroke-width='8' stroke-linecap='round'/><circle cx='75' cy='35' r='6' fill='white'/></svg>">
+    <!-- Favicon: 动态 Emoji -->
+    <link id="dynamic-favicon" rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
     <style>
         * { box-sizing: border-box; }
         :root { --bg-color: #f8f6f2; --text-color: #222; --card-bg: #fff; --primary: #43b883; --primary-hover: #35a674; --danger: #e74c3c; --danger-hover: #c0392b; --info: #5dade2; --shadow: rgba(0, 0, 0, 0.08); --border: #e0e0e0; --input-bg: #f9fafb; --dialog-bg: #fff; --btn-gray: #e5e7eb; --btn-gray-text: #374151; }
@@ -17,50 +23,36 @@ const HTML_CONTENT = `
         /* 顶部固定区 */
         .fixed-elements { position: fixed; top: 0; left: 0; right: 0; background-color: var(--bg-color); z-index: 1000; padding: 10px; height: auto; min-height: 100px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: all 0.3s ease; }
         
-        /* 标题区域 */
         .fixed-elements h3 { 
             position: absolute; top: 10px; left: 20px; margin: 0; 
             font-size: 24px; font-weight: 800; color: var(--primary); 
-            letter-spacing: 1px; 
-            display: flex; align-items: center; gap: 8px; 
+            letter-spacing: 1px; display: flex; align-items: center; gap: 8px; 
         }
         
-        /* Logo 图标样式 (内嵌SVG) */
-        .logo-icon {
-            width: 32px; height: 32px;
-            /* 移除 border-radius 和 object-fit，因为现在是纯SVG */
-        }
-        /* [新增] Logo 背景色跟随主题变量 */
-        .logo-bg {
-            fill: var(--primary);
-            transition: fill 0.3s ease;
-        }
+        .logo-icon { width: 32px; height: 32px; }
+        .logo-bg { fill: var(--primary); transition: fill 0.3s ease; }
         
         .center-content { width: 100%; max-width: 900px; text-align: center; margin: 0 auto; padding-top: 10px; }
         
-        /* 一言样式 (允许手动选择) */
-        #hitokoto { margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; max-width: 600px; margin-left: auto; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; user-select: text; }
+        /* 语录样式 */
+        #hitokoto { margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; max-width: 600px; margin-left: auto; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; user-select: text; min-height: 20px; }
         
-        /* 搜索栏 */
         .search-container { margin-top: 10px; display: flex; justify-content: center; width: 100%; }
         .search-bar { display: flex; justify-content: center; margin-bottom: 10px; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); border: 1px solid var(--border); background-color: var(--card-bg); }
         .search-bar:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(67, 184, 131, 0.2); }
-        .search-bar select { border: none; background-color: rgba(0,0,0,0.02); padding: 8px 10px; font-size: 13px; color: var(--primary); font-weight: bold; outline: none; cursor: pointer; min-width: 85px; text-align-last: center; }
+        
+        .search-bar select { border: none; background-color: rgba(0,0,0,0.02); padding: 8px 0; font-size: 13px; color: var(--primary); font-weight: bold; outline: none; cursor: pointer; width: 80px; text-align: center; text-align-last: center; }
+        .search-bar select option { text-align: left; }
+        
         .search-bar input { flex: 1; border: none; padding: 10px 15px; font-size: 14px; background-color: transparent; outline: none; color: var(--text-color); min-width: 0; }
         .search-bar button { border: none; background-color: var(--primary); color: white; padding: 0 20px; cursor: pointer; flex-shrink: 0; }
         
-        /* 分类标签 */
         .category-buttons-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px 12px; margin: 5px auto 0; max-width: 1200px; }
         .category-button { padding: 5px 12px; border-radius: 15px; background-color: var(--input-bg); color: var(--primary); border: none; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); flex-shrink: 0; }
         .category-button:hover, .category-button.active { background-color: var(--primary); color: white; transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
         
-        /* 右上角控制区 */
         .top-right-controls { position: fixed; top: 12px; right: 20px; display: flex; align-items: center; gap: 10px; z-index: 1001; }
-        
-        /* 顶部按钮高度 - PC端 */
-        .header-btn, .bookmark-search-toggle {
-            height: 38px;
-        }
+        .header-btn, .bookmark-search-toggle { height: 38px; }
         
         .bookmark-search-toggle { background-color: var(--primary); color: white; border: none; border-radius: 4px; padding: 0; cursor: pointer; width: 38px; display: flex; align-items: center; justify-content: center; }
         .bookmark-search-toggle svg { width: 20px; height: 20px; stroke: white; stroke-width: 2.5; }
@@ -70,8 +62,6 @@ const HTML_CONTENT = `
         .header-btn { background-color: var(--primary); color: white; border: none; border-radius: 4px; padding: 0 15px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.3s; }
         .header-btn:hover { background-color: var(--primary-hover); }
         
-        /* 内容区 */
-        /* [修改] 将 max-width 从 1600px 调整为 1500px，以适配 8 个卡片的宽度 (8*170 + 7*15 ≈ 1465) */
         .content { margin-top: 180px; padding: 10px; max-width: 1500px; margin-left: auto; margin-right: auto; padding-bottom: 100px; }
         
         .section-title-container { display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 8px; scroll-margin-top: 180px; }
@@ -79,7 +69,6 @@ const HTML_CONTENT = `
         .section-title:before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 18px; background-color: var(--primary); border-radius: 2px; }
         .section-controls { display: flex; align-items: center; gap: 5px; margin-left: 0; height: 28px; }
         
-        /* 管理按钮 */
         .mini-btn { width: 28px; height: 28px; padding: 0; border-radius: 6px; margin: 0 !important; display: inline-flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; border: none; transition: transform 0.2s; }
         .mini-btn:hover { transform: scale(1.1); }
         .mini-btn svg { width: 16px; height: 16px; stroke: white; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -87,8 +76,6 @@ const HTML_CONTENT = `
         .btn-del { background-color: var(--danger); } 
         .btn-move { background-color: #5d7fb9; }
 
-        /* 卡片网格 */
-        /* [修改] 添加 justify-content: center 确保内容居中对齐 */
         .card-container { display: grid; grid-template-columns: repeat(auto-fill, 170px); gap: 15px; padding: 15px 5px; justify-content: center; }
         .card { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); cursor: pointer; transition: all 0.3s ease; position: relative; animation: fadeIn 0.3s ease forwards; opacity: 0; animation-delay: calc(var(--card-index) * 0.05s); display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
         .card:hover:not(.no-hover) { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1); }
@@ -98,7 +85,6 @@ const HTML_CONTENT = `
         .card-url { font-size: 12px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .private-tag { background-color: #ff9800; color: white; font-size: 10px; padding: 2px 5px; border-radius: 3px; position: absolute; top: 8px; right: 5px; }
         
-        /* 遮罩与操作 */
         .card-click-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; background: rgba(255, 255, 255, 0.85); }
         body.dark-theme .card-click-overlay { background: rgba(30, 30, 30, 0.85); }
         .admin-mode .card:hover .card-click-overlay { display: flex; }
@@ -110,14 +96,12 @@ const HTML_CONTENT = `
         .btn-edit-card { background-color: var(--primary); } 
         .btn-del-card { background-color: var(--danger); }
 
-        /* 悬浮按钮 */
         .add-remove-controls { display: none; flex-direction: column; position: fixed; right: 20px; top: 50%; transform: translateY(-50%); gap: 15px; z-index: 900; align-items: center; }
         .floating-button-group { position: fixed; bottom: 50px; right: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 1000; }
         .round-btn { background-color: var(--primary); color: white; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); transition: all 0.3s ease; }
         .round-btn:hover { transform: translateY(-3px); background-color: var(--primary-hover); box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2); }
         .round-btn svg { width: 24px; height: 24px; stroke: white; stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
-        /* 弹窗 */
         .dialog-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; backdrop-filter: blur(3px); justify-content: center; align-items: center; animation: fadeIn 0.2s ease; }
         .dialog-box { background: var(--dialog-bg); padding: 25px; border-radius: 10px; width: 360px; max-width: 90%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); animation: slideUp 0.3s ease; }
         .dialog-title { margin: 0 0 20px; color: var(--text-color); font-size: 18px; font-weight: 600; text-align: center; }
@@ -129,14 +113,12 @@ const HTML_CONTENT = `
         .btn-confirm { background-color: var(--primary); color: white; }
         .btn-cancel { background-color: var(--btn-gray); color: var(--btn-gray-text); }
 
-        /* 备份 */
         .backup-header-info { background-color: var(--input-bg); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .backup-list-wrapper { border: 1px solid var(--border); border-radius: 6px; max-height: 300px; overflow-y: auto; }
         .backup-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
         .restore-link { color: #3498db; text-decoration: none; cursor: pointer; margin-right: 10px; }
         .trash-icon svg { width: 16px; height: 16px; stroke: var(--danger); fill: none; stroke-width: 2; vertical-align: middle; cursor: pointer; }
 
-        /* 动画 & 其他 */
         #loading-mask .dialog-box { width: 300px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .spinner { width: 36px; height: 36px; border: 4px solid #eee; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; margin-bottom: 15px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -149,48 +131,14 @@ const HTML_CONTENT = `
         /* 移动端适配 */
         @media (max-width: 480px) {
             .fixed-elements { height: auto; padding: 10px 5px 5px; position: fixed; }
-            
-            /* 移动端标题区域 */
-            .fixed-elements h3 { 
-                font-size: 24px; 
-                /* 垂直居中调整：按钮top:18, height:28 -> centerY=32. Logo height:42 -> top=32-21=11 */
-                top: 11px; 
-                left: 12px; 
-                font-weight: 800; 
-                letter-spacing: 1px;
-                display: flex; align-items: center; 
-                gap: 2px; /* Logo文字间距 */
-            }
-            
-            /* 移动端显示文字，并加粗 */
-            .app-title { 
-                display: block; 
-                font-size: 20px; 
-                font-weight: 900; /* 极粗 */
-                margin-left: 0; 
-                letter-spacing: 0.5px;
-            }
-            
-            /* 移动端Logo放大 */
+            .fixed-elements h3 { font-size: 24px; top: 11px; left: 12px; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 2px; }
+            .app-title { display: block; font-size: 20px; font-weight: 900; margin-left: 0; letter-spacing: 0.5px; }
             .logo-icon { width: 42px; height: 42px; }
-            
-            /* 移动端右上角控制区 */
             .top-right-controls { top: 18px; right: 16px; gap: 6px; }
-
-            /* 移动端按钮缩小 */
-            .header-btn, .bookmark-search-toggle {
-                height: 28px !important; 
-                min-width: auto; 
-                font-size: 11px; 
-                padding: 0 8px; 
-                line-height: 28px;
-            }
+            .header-btn, .bookmark-search-toggle { height: 28px !important; min-width: auto; font-size: 11px; padding: 0 8px; line-height: 28px; }
             .bookmark-search-toggle { width: 28px; } 
             .bookmark-search-toggle svg { width: 14px; height: 14px; }
-
-            /* 恢复间距 */
             .center-content { padding: 0 10px; margin-top: 55px; width: 100%; }
-            
             #hitokoto { margin: 3px 0 8px; font-size: 12px; }
             .category-buttons-container { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 5px; scrollbar-width: none; }
             .category-buttons-container::-webkit-scrollbar { display: none; }
@@ -198,17 +146,12 @@ const HTML_CONTENT = `
             .content { padding: 10px; padding-bottom: 220px !important; }
             .card-container { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 5px; align-items: stretch; display: grid; }
             .card { width: 100%; height: 100%; margin: 0; box-sizing: border-box; overflow: hidden; }
-            
-            /* 移动端搜索框 */
             .search-bar { width: 92%; margin-left: auto; margin-right: auto; }
             .search-bar select { min-width: 0; width: 80px; padding: 8px 0; text-align: center; text-indent: 0; }
-            
             .add-remove-controls { top: auto; transform: none; bottom: 140px; right: 15px; }
             .floating-button-group { bottom: 30px; right: 15px; }
             .round-btn { width: 38px; height: 38px; }
-            
             .section-title { font-size: 17px; padding-left: 10px; margin-top: 10px; width: 95px; min-width: 95px; }
-            
             .dialog-box { width: 85%; padding: 20px; }
             #loading-mask .dialog-box { width: 260px; } 
             .btn-base { padding: 10px 0; font-size: 15px; } 
@@ -217,10 +160,8 @@ const HTML_CONTENT = `
 </head>
 <body>
     <div class="fixed-elements">
-        <!-- 标题部分：使用内嵌SVG以支持CSS变色 -->
         <h3>
             <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <!-- 添加 logo-bg 类，通过CSS var(--primary) 控制填充色 -->
                 <rect class="logo-bg" x="10" y="20" width="80" height="60" rx="12" />
                 <path d="M10 50 C 30 40, 70 80, 90 50" stroke="white" stroke-width="8" stroke-linecap="round"/>
                 <circle cx="75" cy="35" r="6" fill="white"/>
@@ -228,8 +169,7 @@ const HTML_CONTENT = `
             <span class="app-title">FlowTab</span>
         </h3>
         <div class="center-content">
-            <!-- 一言：仅展示，移除复制 -->
-            <p id="hitokoto"><span id="hitokoto_text">Loading...</span></p>
+            <p id="hitokoto"><span id="hitokoto_text">正在获取诗词...</span></p>
             <div class="search-container">
                 <div class="search-bar">
                     <select id="search-engine-select">
@@ -278,7 +218,6 @@ const HTML_CONTENT = `
         <div id="sections-container"></div>
         <div class="floating-button-group">
             <button class="round-btn" id="back-to-top-btn" onclick="scrollToTop()" style="display: none;">
-                <!-- 返回顶部：双折线箭头 -->
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"></polyline><polyline points="17 18 12 13 7 18"></polyline></svg>
             </button>
             <button class="round-btn" onclick="toggleTheme()">
@@ -287,7 +226,7 @@ const HTML_CONTENT = `
         </div>
     </div>
 
-    <!-- 弹窗组件 -->
+    <!-- 弹窗 -->
     <div class="dialog-overlay" id="link-dialog"><div class="dialog-box"><h3 class="dialog-title" id="link-dialog-title">添加链接</h3><input type="hidden" id="link-old-url"><label>名称 (必填)</label><input type="text" id="name-input" placeholder="名称"><label>URL (必填)</label><input type="text" id="url-input" placeholder="https://..."><label>描述 (可选)</label><input type="text" id="tips-input" placeholder="描述"><label>图标 URL (可选)</label><input type="text" id="icon-input" placeholder="图标地址"><label>分类</label><select id="category-select"></select><div style="margin-top:10px;display:flex;align-items:center"><input type="checkbox" id="private-checkbox" style="width:auto;margin:0 10px 0 0"><span style="font-size:14px;color:var(--text-color)">设为私密链接</span></div><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('link-dialog')">取消</button><button class="btn-base btn-confirm" onclick="saveLinkFromDialog()">确定</button></div></div></div>
     <div class="dialog-overlay" id="login-modal"><div class="dialog-box" style="width:300px"><h3 class="dialog-title">登录</h3><input type="password" id="login-password" placeholder="请输入密码"><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('login-modal')">取消</button><button class="btn-base btn-confirm" onclick="performLogin()">确定</button></div></div></div>
     <div class="dialog-overlay" id="backup-modal"><div class="dialog-box" style="width:550px;max-width:90%;padding:0;overflow:hidden"><div style="padding:20px;border-bottom:1px solid var(--border)"><h3 style="margin:0;font-size:18px;color:var(--text-color);text-align:left">历史备份节点列表</h3><p style="margin:5px 0 0;font-size:12px;color:#888">我们为您在云端最多保留10个历史备份节点。</p></div><div style="padding:20px"><div class="backup-header-info"><span id="last-backup-time" style="font-size:13px;color:var(--text-color)">加载中...</span><button class="btn-base btn-confirm" onclick="handleManualBackup()" style="padding:6px 15px;min-width:auto">🚀 立即备份</button></div><h4 style="margin:0 0 10px;font-size:14px;color:var(--text-color)">云端历史备份节点</h4><div id="backup-list-container" class="backup-list-wrapper"></div></div><div style="padding:15px 20px;background-color:var(--input-bg);text-align:right;border-top:1px solid var(--border)"><button class="btn-base btn-cancel" onclick="hideDialog('backup-modal')">关闭</button></div></div></div>
@@ -296,84 +235,66 @@ const HTML_CONTENT = `
     <div id="custom-tooltip"></div>
 
     <script>
-    // 辅助函数
     function el(id) { return document.getElementById(id); }
     function showDialog(id) { const d = el(id); if(d) { d.style.display = 'flex'; const i = d.querySelectorAll('input'); if(i.length) setTimeout(()=>i[0].focus(),100); } }
     function hideDialog(id) { const d = el(id); if(d) d.style.display = 'none'; }
     function showLoading(text='加载中...') { el('loading-text').innerText=text; showDialog('loading-mask'); }
     function hideLoading() { hideDialog('loading-mask'); }
     
-    // 布局调整
     function adjustOffset() { const header = document.querySelector('.fixed-elements'); const content = document.querySelector('.content'); if(header && content) { const h = header.offsetHeight; content.style.marginTop = h + 'px'; } }
     window.addEventListener('load', adjustOffset); window.addEventListener('resize', adjustOffset); new ResizeObserver(adjustOffset).observe(document.querySelector('.fixed-elements'));
 
-    // 通用弹窗
     function customAlert(msg) { el('general-dialog-title').textContent = '提示'; el('general-dialog-content').textContent = msg; el('general-dialog-input').style.display = 'none'; el('general-cancel').style.display = 'none'; el('general-confirm').textContent = '确定'; showDialog('general-dialog'); const btn = el('general-confirm').cloneNode(true); el('general-confirm').parentNode.replaceChild(btn, el('general-confirm')); btn.onclick = () => hideDialog('general-dialog'); }
     function customConfirm(msg, btnOkText='确定', btnCancelText='取消') { return new Promise(resolve => { el('general-dialog-title').textContent = '确认'; el('general-dialog-content').textContent = msg; el('general-dialog-input').style.display = 'none'; el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = btnCancelText; el('general-confirm').textContent = btnOkText; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = () => { hideDialog('general-dialog'); resolve(true); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve(false); }; }); }
     function customPrompt(title, val='') { return new Promise(resolve => { el('general-dialog-title').textContent = title; el('general-dialog-content').textContent = ''; const inp = el('general-dialog-input'); inp.style.display = 'block'; inp.value = val; inp.focus(); el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = '取消'; showDialog('general-dialog'); setTimeout(()=>inp.focus(), 100); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = () => { hideDialog('general-dialog'); resolve(inp.value.trim()); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve(null); }; inp.onkeypress = (e) => { if(e.key==='Enter') nOk.click(); }; }); }
 
-    // 状态管理
     const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
     const searchEngines = { SearXNG: "https://ss.ayang.nyc.mn/search?q=", baidu: "https://www.baidu.com/s?wd=", bing: "https://www.bing.com/search?q=", google: "https://www.google.com/search?q=", duckduckgo: "https://duckduckgo.com/?q=" };
 
-    // API
     async function api(url, method='GET', body=null) { const opts = { method, headers: {'Content-Type': 'application/json'} }; if(state.token) opts.headers['Authorization'] = state.token; if(body) opts.body = JSON.stringify(body); try { const res = await fetch(url, opts); if(res.status === 401) { resetLogin(); customAlert('登录已过期，请重新登录'); return { error: 'auth' }; } if(!res.ok) return { error: 'Status '+res.status }; return await res.json(); } catch(e) { return { error: e.message }; } }
 
-    // 搜索逻辑
     el('search-engine-select').value = state.engine; el('search-engine-select').onchange = e => { state.engine = e.target.value; localStorage.setItem('se', state.engine); }; el('search-button').onclick = () => { const q = el('search-input').value; if(q) window.open(searchEngines[state.engine] + encodeURIComponent(q), '_blank'); }; el('search-input').onkeypress = e => e.key==='Enter' && el('search-button').click();
 
-    // [修改] 一言逻辑：仅保留展示功能
+    // --- 一言/古诗词逻辑重写 ---
     function fetchHitokoto() {
         const hitokoto = el('hitokoto_text');
         if(!hitokoto) return;
-        
-        // 本地备用语录（纯中文）
-        const backupQuotes = [
-            "生活明朗，万物可爱。",
-            "星光不问赶路人，时光不负有心人。",
-            "保持热爱，奔赴山海。",
-            "世间所有的相遇，都是久别重逢。",
-            "心有猛虎，细嗅蔷薇。",
-            "既然选择了远方，便只顾风雨兼程。",
-            "未曾长夜痛哭者，不足以语人生。",
-            "满地都是六便士，他却抬头看见了月亮。"
-        ];
 
-        const getBackup = () => backupQuotes[Math.floor(Math.random() * backupQuotes.length)];
-        
-        // 发起请求（仅保留中文类别）
-        const randomParam = '&c=a&c=b&c=c&c=d&c=h&c=i&c=k&_r=' + Math.random();
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒超时
+        // 极简静态兜底
+        const lastResort = "不抛弃，不放弃。——《士兵突击》";
 
-        fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8' + randomParam, {
-            signal: controller.signal,
-            cache: 'no-store'
-        })
-        .then(response => response.json())
-        .then(data => {
-            clearTimeout(timeoutId);
-            if(data && data.hitokoto) {
-                hitokoto.innerText = data.hitokoto;
-            } else {
-                hitokoto.innerText = getBackup();
-            }
-        })
-        .catch(err => {
-            clearTimeout(timeoutId);
-            hitokoto.innerText = getBackup();
-        });
+        // 1. 优先：今日诗词 (古典诗词)
+        fetch('https://v1.jinrishici.com/all.json')
+            .then(response => response.json())
+            .then(data => {
+                if(data && data.content) {
+                    hitokoto.innerText = data.content + " —— " + (data.author || "") + "《" + (data.origin || "未知") + "》";
+                } else {
+                    throw new Error("Jinrishici format error");
+                }
+            })
+            .catch(err => {
+                console.log("Jinrishici failed, trying Hitokoto...", err);
+                // 2. 备选：Hitokoto (限定影视/文学/诗词/哲学)
+                // c=h(影视), c=d(文学), c=i(诗词), c=k(哲学)
+                fetch('https://v1.hitokoto.cn/?c=h&c=d&c=i&c=k&encode=json&charset=utf-8')
+                    .then(r => r.json())
+                    .then(d => {
+                        if(d && d.hitokoto) {
+                            hitokoto.innerText = d.hitokoto + (d.from ? " ——《" + d.from + "》" : "");
+                        } else {
+                            hitokoto.innerText = lastResort;
+                        }
+                    })
+                    .catch(e => {
+                        console.log("All quotes API failed.", e);
+                        hitokoto.innerText = lastResort;
+                    });
+            });
     }
 
-    // [新增] 动态更新 Favicon 颜色
     function updateFavicon(theme) {
-        // 浅色模式绿: #43b883 (%2343b883), 深色模式蓝: #5d7fb9 (%235d7fb9)
-        const color = theme === 'dark' ? '%235d7fb9' : '%2343b883';
-        const favicon = document.getElementById('dynamic-favicon');
-        if(favicon) {
-            const svgData = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'><rect x='10' y='20' width='80' height='60' rx='12' fill='" + color + "' /><path d='M10 50 C 30 40, 70 80, 90 50' stroke='white' stroke-width='8' stroke-linecap='round'/><circle cx='75' cy='35' r='6' fill='white'/></svg>";
-            favicon.href = svgData;
-        }
+        // 深色/浅色模式图标切换逻辑 (当前使用emoji，保留接口)
     }
 
     async function loadLinks() { const res = await api('/api/getLinks?userId=testUser'); if (res.error === 'auth') return resetLogin(); if (res.categories) state.categories = res.categories; state.publicLinks = (res.links||[]).filter(l=>!l.isPrivate); state.privateLinks = (res.links||[]).filter(l=>l.isPrivate); state.links = state.isLoggedIn ? [...state.publicLinks, ...state.privateLinks] : state.publicLinks; renderSections(); updateUI(); updateCategoryButtons(); setTimeout(adjustOffset, 100); setTimeout(updateActiveCategory, 100); }
@@ -387,11 +308,12 @@ const HTML_CONTENT = `
                 const title = document.createElement('div'); title.className = 'section-title-container';
                 let adminBtns = '';
                 if(state.isEditMode) {
+                    // 注意：此处必须使用单引号拼接字符串，避免与 Worker 的模板字符串冲突
                     adminBtns = '<div class="section-controls">' +
-                                '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
-                                '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
-                                '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\\'' + cat + '\\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
-                                '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\\'' + cat + '\\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
+                                '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\'' + cat + '\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
+                                '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\'' + cat + '\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
+                                '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\'' + cat + '\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
+                                '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\'' + cat + '\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
                                 '</div>';
                 }
                 title.innerHTML = '<div class="section-title">' + cat + '</div>' + adminBtns;
@@ -408,9 +330,9 @@ const HTML_CONTENT = `
         const card = document.createElement('div'); card.className = 'card ' + (state.isEditMode ? 'no-hover' : ''); card.draggable = state.isAdmin; card.dataset.url = link.url; card.style.setProperty('--card-index', cont.children.length);
         let icon = link.icon; if(!icon || !icon.startsWith('http')) { try { icon = 'https://www.faviconextractor.com/favicon/'+new URL(link.url).hostname; } catch(e){ icon=''; } }
         const safeName = link.name.replace(/</g,'&lt;'); const safeUrl = link.url.replace(/</g,'&lt;');
-        card.innerHTML = '<div class="card-top"><img class="card-icon" src="' + icon + '" onerror="this.src=\\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22gray%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/></svg>\\\'"><div class="card-title">' + safeName + '</div></div><div class="card-url">' + safeUrl + '</div>' + (link.isPrivate ? '<div class="private-tag">私密</div>' : '');
+        card.innerHTML = '<div class="card-top"><img class="card-icon" src="' + icon + '" onerror="this.src=\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22gray%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/></svg>\\'"><div class="card-title">' + safeName + '</div></div><div class="card-url">' + safeUrl + '</div>' + (link.isPrivate ? '<div class="private-tag">私密</div>' : '');
         const overlay = document.createElement('div'); overlay.className = 'card-click-overlay';
-        overlay.innerHTML = '<div class="overlay-half left" onclick="event.stopPropagation();showLinkDialog(\\\'' + link.url + '\\\')"><div class="action-btn-square btn-edit-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right" onclick="event.stopPropagation();removeCard(\\\'' + link.url + '\\\')"><div class="action-btn-square btn-del-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
+        overlay.innerHTML = '<div class="overlay-half left" onclick="event.stopPropagation();showLinkDialog(\\'' + link.url + '\\')"><div class="action-btn-square btn-edit-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right" onclick="event.stopPropagation();removeCard(\\'' + link.url + '\\')"><div class="action-btn-square btn-del-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
         card.appendChild(overlay);
         if(!state.isAdmin) { card.onclick = () => window.open(link.url.startsWith('http')?link.url:'http://'+link.url, '_blank'); card.onmousemove = e => showTooltip(e, link.tips); card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; } else { card.ondragstart = e => { window.draggedUrl = link.url; e.dataTransfer.effectAllowed = "move"; }; }
         cont.appendChild(card);
@@ -425,16 +347,12 @@ const HTML_CONTENT = `
         cats.forEach(cat => {
             const hasLinks = state.links.some(l => l.category === cat);
             if (!hasLinks && !state.isAdmin) return;
-
             const btn = document.createElement('button');
             btn.className = 'category-button';
             btn.textContent = cat;
             btn.onclick = () => {
                 const searchInput = el('bookmark-search-input');
-                if(searchInput && searchInput.value) {
-                    searchInput.value = '';
-                    renderSections();
-                }
+                if(searchInput && searchInput.value) { searchInput.value = ''; renderSections(); }
                 setTimeout(() => {
                     const section = el(cat);
                     if(section) {
@@ -473,18 +391,12 @@ const HTML_CONTENT = `
     async function restoreBackup(id) { if(await customConfirm('确定恢复？当前未保存修改将丢失。')) { showLoading('恢复...'); const r = await api('/api/restoreFromBackup', 'POST', {userId:'testUser', backupId:id}); hideLoading(); if(r.success) { hideDialog('backup-modal'); loadLinks(); customAlert('成功'); } else customAlert('失败'); } }
     async function deleteBackup(id) { if(await customConfirm('删除此备份？')) { showLoading('删除...'); await api('/api/deleteBackup', 'POST', {backupId:id}); hideLoading(); showBackupManager(); } }
     function toggleBookmarkSearch() { const dd = el('bookmark-search-dropdown'); dd.classList.toggle('show'); if(dd.classList.contains('show')) { const i = el('bookmark-search-input'); i.focus(); i.oninput = e => { const q = e.target.value.toLowerCase(); if(!q) return renderSections(); el('sections-container').innerHTML = '<div class="section"><div class="card-container" id="s-res"></div></div>'; const c = el('s-res'); state.links.filter(l=>l.name.toLowerCase().includes(q)).forEach(l=>createCard(l,c)); } } else renderSections(); }
-    
-    // [优化] 点击页面空白处关闭下拉框
     window.onclick = function(e) {
         if (!e.target.closest('.bookmark-search-toggle')) {
             const dd = el('bookmark-search-dropdown');
-            if (dd && dd.classList.contains('show')) {
-                 dd.classList.remove('show');
-                 renderSections(); // 恢复
-            }
+            if (dd && dd.classList.contains('show')) { dd.classList.remove('show'); renderSections(); }
         }
     }
-
     function showTooltip(e,t) { if(!t) return; const tt=el('custom-tooltip'); tt.textContent=t; tt.style.display='block'; const offset = 15; let x = e.clientX + offset; let y = e.clientY + offset; const rect = tt.getBoundingClientRect(); if(x + rect.width > window.innerWidth) x = e.clientX - rect.width - 5; if(y + rect.height > window.innerHeight) y = e.clientY - rect.height - 5; tt.style.left = x + 'px'; tt.style.top = y + 'px'; }
     function toggleTheme() { const d = document.body.classList.toggle('dark-theme'); localStorage.setItem('theme', d?'dark':'light'); }
     function scrollToTop() { window.scrollTo({ top:0, behavior:'smooth' }); }
@@ -493,13 +405,10 @@ const HTML_CONTENT = `
     window.addEventListener('load', updateActiveCategory); window.addEventListener('resize', updateActiveCategory);
 
     document.addEventListener('DOMContentLoaded', async () => {
-        if(localStorage.getItem('theme')==='dark') {
-            document.body.classList.add('dark-theme');
-            updateFavicon('dark');
-        }
+        if(localStorage.getItem('theme')==='dark') { document.body.classList.add('dark-theme'); updateFavicon('dark'); }
         if(await validateToken()) { state.isLoggedIn=true; updateUI(); }
         loadLinks();
-        fetchHitokoto(); // 调用一言
+        fetchHitokoto();
     });
     </script>
 </body>
@@ -549,7 +458,6 @@ export default {
                 const data = await env.CARD_ORDER.get(sourceUserId);
                 if(!data) return jsonRes({ success: false, message: '无数据' });
                 const d = new Date(new Date().getTime() + 8 * 3600 * 1000);
-                // [修改] 修复 SyntaxError，使用字符串拼接代替模板字符串，避免转义问题
                 const backupId = 'backup_' + d.toISOString().replace(/[-:]/g, '').slice(0, 15);
                 await env.CARD_ORDER.put(backupId, data);
                 const list = await env.CARD_ORDER.list({ prefix: 'backup_' });
