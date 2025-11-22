@@ -1,5 +1,4 @@
 // 1. 前端页面代码 (HTML/CSS/JS)
-// 我们将前端代码作为字符串常量，方便在 Worker 中直接返回
 const HTML_CONTENT = `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -7,276 +6,118 @@ const HTML_CONTENT = `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FlowTab</title>
-    <!-- [Logo] FlowTab SVG Icon: 绿色圆角矩形搭配流畅波浪线 -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'><rect x='10' y='20' width='80' height='60' rx='12' fill='%2343b883' /><path d='M10 50 C 30 40, 70 80, 90 50' stroke='white' stroke-width='8' stroke-linecap='round'/><circle cx='75' cy='35' r='6' fill='white'/></svg>">
+    <!-- [Logo] Favicon - 初始加载 (JS会根据主题动态更新它) -->
+    <link rel="icon" id="dynamic-favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'><rect x='10' y='20' width='80' height='60' rx='12' fill='%2343b883' /><path d='M10 50 C 30 40, 70 80, 90 50' stroke='white' stroke-width='8' stroke-linecap='round'/><circle cx='75' cy='35' r='6' fill='white'/></svg>">
     <style>
-        /* === 全局设置 === */
         * { box-sizing: border-box; }
-
-        /* === 基础变量定义 === */
-        :root {
-            --bg-color: #f8f6f2; 
-            --text-color: #222; 
-            --card-bg: #fff;
-            --primary: #43b883; 
-            --primary-hover: #35a674;
-            --danger: #e74c3c;
-            --danger-hover: #c0392b;
-            --info: #5dade2;
-            --shadow: rgba(0, 0, 0, 0.08); 
-            --border: #e0e0e0;
-            --input-bg: #f9fafb;
-            --dialog-bg: #fff;
-            --btn-gray: #e5e7eb;
-            --btn-gray-text: #374151;
-        }
-        /* 深色模式变量 */
-        body.dark-theme {
-            --bg-color: #121418; 
-            --text-color: #e3e3e3; 
-            --card-bg: #1e2128;
-            --primary: #5d7fb9; 
-            --primary-hover: #4a6fa5;
-            --danger: #e74c3c;
-            --info: #5d7fb9;
-            --shadow: rgba(0, 0, 0, 0.2); 
-            --border: #444;
-            --input-bg: #252830; 
-            --dialog-bg: #2d3748;
-            --btn-gray: #374151;
-            --btn-gray-text: #d1d5db;
-        }
-        body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-            margin: 0; padding: 0;
-            background-color: var(--bg-color); color: var(--text-color);
-            transition: all 0.3s ease; overflow-x: hidden;
-        }
-
-        /* === 顶部固定区 (Header) === */
-        .fixed-elements { 
-            position: fixed; top: 0; left: 0; right: 0; 
-            background-color: var(--bg-color); z-index: 1000; 
-            padding: 10px; height: auto; min-height: 100px; 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.02);
-            transition: all 0.3s ease;
-        }
+        :root { --bg-color: #f8f6f2; --text-color: #222; --card-bg: #fff; --primary: #43b883; --primary-hover: #35a674; --danger: #e74c3c; --danger-hover: #c0392b; --info: #5dade2; --shadow: rgba(0, 0, 0, 0.08); --border: #e0e0e0; --input-bg: #f9fafb; --dialog-bg: #fff; --btn-gray: #e5e7eb; --btn-gray-text: #374151; }
+        body.dark-theme { --bg-color: #121418; --text-color: #e3e3e3; --card-bg: #1e2128; --primary: #5d7fb9; --primary-hover: #4a6fa5; --danger: #e74c3c; --info: #5d7fb9; --shadow: rgba(0, 0, 0, 0.2); --border: #444; --input-bg: #252830; --dialog-bg: #2d3748; --btn-gray: #374151; --btn-gray-text: #d1d5db; }
+        body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); color: var(--text-color); transition: all 0.3s ease; overflow-x: hidden; }
+        
+        /* 顶部固定区 */
+        .fixed-elements { position: fixed; top: 0; left: 0; right: 0; background-color: var(--bg-color); z-index: 1000; padding: 10px; height: auto; min-height: 100px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: all 0.3s ease; }
+        
+        /* 标题区域 */
         .fixed-elements h3 { 
-            position: absolute; top: 12px; left: 20px; margin: 0; 
-            font-size: 24px; font-weight: 800; color: var(--primary);
-            letter-spacing: 1px;
-        }
-        .center-content { 
-            width: 100%; max-width: 900px; text-align: center; 
-            margin: 0 auto; padding-top: 10px; 
+            position: absolute; top: 10px; left: 20px; margin: 0; 
+            font-size: 24px; font-weight: 800; color: var(--primary); 
+            letter-spacing: 1px; 
+            display: flex; align-items: center; gap: 8px; 
         }
         
-        /* 一言 (Hitokoto) */
-        #hitokoto { 
-            margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; 
-            max-width: 600px; margin-left: auto; margin-right: auto;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        /* Logo 图标样式 (内嵌SVG) */
+        .logo-icon {
+            width: 32px; height: 32px;
+            /* 移除 border-radius 和 object-fit，因为现在是纯SVG */
         }
-        #hitokoto a { color: var(--primary); text-decoration: none; }
-
-        /* === 搜索栏 === */
+        /* [新增] Logo 背景色跟随主题变量 */
+        .logo-bg {
+            fill: var(--primary);
+            transition: fill 0.3s ease;
+        }
+        
+        .center-content { width: 100%; max-width: 900px; text-align: center; margin: 0 auto; padding-top: 10px; }
+        
+        /* 一言样式 (已移除点击效果) */
+        #hitokoto { margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; max-width: 600px; margin-left: auto; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+        
+        /* 搜索栏 */
         .search-container { margin-top: 10px; display: flex; justify-content: center; width: 100%; }
-        .search-bar { 
-            display: flex; justify-content: center; margin-bottom: 10px; 
-            width: 100%; max-width: 600px; margin-left: auto; margin-right: auto;
-            border-radius: 8px; overflow: hidden; 
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); 
-            border: 1px solid var(--border); background-color: var(--card-bg);
-        }
+        .search-bar { display: flex; justify-content: center; margin-bottom: 10px; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); border: 1px solid var(--border); background-color: var(--card-bg); }
         .search-bar:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(67, 184, 131, 0.2); }
-        .search-bar select { 
-            border: none; background-color: rgba(0,0,0,0.02); padding: 8px 10px; 
-            font-size: 13px; color: var(--primary); font-weight: bold; 
-            outline: none; cursor: pointer; min-width: 85px; text-align-last: center;
+        .search-bar select { border: none; background-color: rgba(0,0,0,0.02); padding: 8px 10px; font-size: 13px; color: var(--primary); font-weight: bold; outline: none; cursor: pointer; min-width: 85px; text-align-last: center; }
+        .search-bar input { flex: 1; border: none; padding: 10px 15px; font-size: 14px; background-color: transparent; outline: none; color: var(--text-color); min-width: 0; }
+        .search-bar button { border: none; background-color: var(--primary); color: white; padding: 0 20px; cursor: pointer; flex-shrink: 0; }
+        
+        /* 分类标签 */
+        .category-buttons-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px 12px; margin: 5px auto 0; max-width: 1200px; }
+        .category-button { padding: 5px 12px; border-radius: 15px; background-color: var(--input-bg); color: var(--primary); border: none; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); flex-shrink: 0; }
+        .category-button:hover, .category-button.active { background-color: var(--primary); color: white; transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+        
+        /* 右上角控制区 */
+        .top-right-controls { position: fixed; top: 12px; right: 20px; display: flex; align-items: center; gap: 10px; z-index: 1001; }
+        
+        /* 顶部按钮高度 - PC端 */
+        .header-btn, .bookmark-search-toggle {
+            height: 38px;
         }
-        .search-bar input { 
-            flex: 1; border: none; padding: 10px 15px; font-size: 14px; 
-            background-color: transparent; outline: none; color: var(--text-color);
-            min-width: 0; 
-        }
-        .search-bar button { 
-            border: none; background-color: var(--primary); color: white; 
-            padding: 0 20px; cursor: pointer; flex-shrink: 0;
-        }
-
-        /* === 分类标签 (Tags) === */
-        .category-buttons-container { 
-            display: flex; flex-wrap: wrap; justify-content: center; 
-            gap: 6px; padding: 8px 12px; margin: 5px auto 0; max-width: 1200px;
-        }
-        .category-button { 
-            padding: 5px 12px; border-radius: 15px; 
-            background-color: var(--input-bg); color: var(--primary); 
-            border: none; cursor: pointer; font-size: 12px; font-weight: 500; 
-            transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); flex-shrink: 0;
-        }
-        .category-button:hover, .category-button.active { 
-            background-color: var(--primary); color: white; transform: translateY(-1px); 
-            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
-        }
-
-        /* === 右上角控制区 === */
-        .top-right-controls { 
-            position: fixed; top: 12px; right: 20px; 
-            display: flex; align-items: center; gap: 10px; z-index: 1001; 
-        }
-        .bookmark-search-toggle { 
-            background-color: var(--primary); color: white; border: none; 
-            border-radius: 4px; padding: 0; cursor: pointer; 
-            width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-        }
+        
+        .bookmark-search-toggle { background-color: var(--primary); color: white; border: none; border-radius: 4px; padding: 0; cursor: pointer; width: 38px; display: flex; align-items: center; justify-content: center; }
         .bookmark-search-toggle svg { width: 20px; height: 20px; stroke: white; stroke-width: 2.5; }
-        .bookmark-search-dropdown { 
-            position: absolute; top: 100%; right: 0; width: 200px; 
-            background-color: var(--card-bg); border: 1px solid var(--border); 
-            border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); 
-            padding: 8px; margin-top: 8px; display: none; 
-        }
+        .bookmark-search-dropdown { position: absolute; top: 100%; right: 0; width: 200px; background-color: var(--card-bg); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); padding: 8px; margin-top: 8px; display: none; }
         .bookmark-search-dropdown.show { display: block; }
-        .bookmark-search-dropdown input { 
-            width: 100%; border: 1px solid var(--border); border-radius: 4px; 
-            padding: 8px; font-size: 13px; box-sizing: border-box; 
-            background-color: var(--input-bg); color: var(--text-color); 
-        }
-
-        .header-btn {
-            background-color: var(--primary); color: white; border: none;
-            border-radius: 4px; padding: 0 15px; height: 38px; 
-            font-size: 13px; font-weight: 500; cursor: pointer;
-            transition: background 0.3s;
-        }
+        .bookmark-search-dropdown input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-size: 13px; box-sizing: border-box; background-color: var(--input-bg); color: var(--text-color); }
+        .header-btn { background-color: var(--primary); color: white; border: none; border-radius: 4px; padding: 0 15px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.3s; }
         .header-btn:hover { background-color: var(--primary-hover); }
-
-        /* === 主要内容区 === */
-        .content { 
-            margin-top: 180px; 
-            padding: 10px; 
-            max-width: 1600px; /* PC端宽度限制 */
-            margin-left: auto; margin-right: auto; 
-            padding-bottom: 100px;
-        }
-        .section-title-container { 
-            display: flex; align-items: center; margin-bottom: 15px; 
-            border-bottom: 1px solid var(--border); padding-bottom: 8px; 
-            scroll-margin-top: 180px; 
-        }
-        .section-title { 
-            font-size: 20px; 
-            font-weight: bold; /* PC端标题粗体 */
-            color: var(--primary); 
-            position: relative; padding-left: 12px; margin-right: 10px;
-            /* PC端固定宽度 */
-            width: 130px; min-width: 130px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .section-title:before { 
-            content: ''; position: absolute; left: 0; top: 50%; 
-            transform: translateY(-50%); width: 4px; height: 18px; 
-            background-color: var(--primary); border-radius: 2px; 
-        }
-
-        /* 分类管理按钮容器 */
-        .section-controls {
-            display: flex; align-items: center; gap: 5px; 
-            margin-left: 0; height: 28px; 
-        }
-
-        /* 小按钮样式 */
-        .mini-btn { 
-            width: 28px; height: 28px; padding: 0; border-radius: 6px; 
-            margin: 0 !important; 
-            display: inline-flex; align-items: center; justify-content: center; 
-            color: #fff; cursor: pointer; border: none; 
-            transition: transform 0.2s;
-        }
+        
+        /* 内容区 */
+        /* [修改] 将 max-width 从 1600px 调整为 1500px，以适配 8 个卡片的宽度 (8*170 + 7*15 ≈ 1465) */
+        .content { margin-top: 180px; padding: 10px; max-width: 1500px; margin-left: auto; margin-right: auto; padding-bottom: 100px; }
+        
+        .section-title-container { display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 8px; scroll-margin-top: 180px; }
+        .section-title { font-size: 20px; font-weight: bold; color: var(--primary); position: relative; padding-left: 12px; margin-right: 10px; width: 130px; min-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .section-title:before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 18px; background-color: var(--primary); border-radius: 2px; }
+        .section-controls { display: flex; align-items: center; gap: 5px; margin-left: 0; height: 28px; }
+        
+        /* 管理按钮 */
+        .mini-btn { width: 28px; height: 28px; padding: 0; border-radius: 6px; margin: 0 !important; display: inline-flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; border: none; transition: transform 0.2s; }
         .mini-btn:hover { transform: scale(1.1); }
         .mini-btn svg { width: 16px; height: 16px; stroke: white; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
         .btn-edit { background-color: var(--primary); } 
         .btn-del { background-color: var(--danger); } 
-        /* 排序按钮：深色模式蓝 */
         .btn-move { background-color: #5d7fb9; }
 
-        /* === 卡片网格 === */
-        .card-container { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fill, 170px); 
-            gap: 15px 20px; 
-            padding: 15px 5px; 
-        }
-        .card { 
-            background-color: var(--card-bg); border-radius: 8px; padding: 12px; 
-            width: 100%; 
-            box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); 
-            cursor: pointer; transition: all 0.3s ease; position: relative; 
-            animation: fadeIn 0.3s ease forwards; opacity: 0; 
-            animation-delay: calc(var(--card-index) * 0.05s);
-            display: flex; flex-direction: column; justify-content: center;
-            overflow: hidden; 
-        }
+        /* 卡片网格 */
+        /* [修改] 添加 justify-content: center 确保内容居中对齐 */
+        .card-container { display: grid; grid-template-columns: repeat(auto-fill, 170px); gap: 15px; padding: 15px 5px; justify-content: center; }
+        .card { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); cursor: pointer; transition: all 0.3s ease; position: relative; animation: fadeIn 0.3s ease forwards; opacity: 0; animation-delay: calc(var(--card-index) * 0.05s); display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
         .card:hover:not(.no-hover) { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1); }
-        
         .card-top { display: flex; align-items: center; margin-bottom: 6px; width: 100%; }
         .card-icon { width: 16px; height: 16px; margin-right: 6px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
         .card-title { font-size: 14px; font-weight: 600; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .card-url { font-size: 12px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .private-tag { background-color: #ff9800; color: white; font-size: 10px; padding: 2px 5px; border-radius: 3px; position: absolute; top: 8px; right: 5px; }
-
-        /* === 卡片操作遮罩 (管理模式) === */
-        .card-click-overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 10; display: none; 
-            background: rgba(255, 255, 255, 0.85); 
-        }
+        
+        /* 遮罩与操作 */
+        .card-click-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; background: rgba(255, 255, 255, 0.85); }
         body.dark-theme .card-click-overlay { background: rgba(30, 30, 30, 0.85); }
         .admin-mode .card:hover .card-click-overlay { display: flex; }
-        .overlay-half {
-            width: 50%; height: 100%;
-            display: flex; align-items: center; justify-content: center;
-            transition: background-color 0.2s;
-        }
+        .overlay-half { width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .overlay-half:hover { background-color: rgba(0,0,0,0.05); }
-        .action-btn-square {
-            width: 32px; height: 32px; border-radius: 6px;
-            display: flex; align-items: center; justify-content: center;
-            cursor: pointer; border: none; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-            pointer-events: none; 
-        }
+        .action-btn-square { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s; pointer-events: none; }
         .overlay-half:hover .action-btn-square { transform: scale(1.1); }
         .action-btn-square svg { width: 18px; height: 18px; fill: none; stroke: white; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-        .btn-edit-card { background-color: var(--primary); }
+        .btn-edit-card { background-color: var(--primary); } 
         .btn-del-card { background-color: var(--danger); }
 
-        /* === 悬浮按钮组 (右下/右侧) === */
-        .add-remove-controls { 
-            display: none; flex-direction: column; position: fixed; 
-            right: 20px; top: 50%; transform: translateY(-50%); 
-            gap: 15px; z-index: 900; align-items: center; 
-        }
-        .floating-button-group { 
-            position: fixed; bottom: 50px; right: 20px; 
-            display: flex; flex-direction: column; gap: 15px; z-index: 1000; 
-        }
-        .round-btn { 
-            background-color: var(--primary); color: white; border: none; 
-            border-radius: 50%; width: 44px; height: 44px; 
-            display: flex; align-items: center; justify-content: center; 
-            cursor: pointer; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); 
-            transition: all 0.3s ease; 
-        }
-        .round-btn:hover { 
-            transform: translateY(-3px); background-color: var(--primary-hover); 
-            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2); 
-        }
+        /* 悬浮按钮 */
+        .add-remove-controls { display: none; flex-direction: column; position: fixed; right: 20px; top: 50%; transform: translateY(-50%); gap: 15px; z-index: 900; align-items: center; }
+        .floating-button-group { position: fixed; bottom: 50px; right: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 1000; }
+        .round-btn { background-color: var(--primary); color: white; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); transition: all 0.3s ease; }
+        .round-btn:hover { transform: translateY(-3px); background-color: var(--primary-hover); box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2); }
         .round-btn svg { width: 24px; height: 24px; stroke: white; stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
-        /* === 弹窗 & 遮罩 === */
+        /* 弹窗 */
         .dialog-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; backdrop-filter: blur(3px); justify-content: center; align-items: center; animation: fadeIn 0.2s ease; }
         .dialog-box { background: var(--dialog-bg); padding: 25px; border-radius: 10px; width: 360px; max-width: 90%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); animation: slideUp 0.3s ease; }
         .dialog-title { margin: 0 0 20px; color: var(--text-color); font-size: 18px; font-weight: 600; text-align: center; }
@@ -284,70 +125,88 @@ const HTML_CONTENT = `
         .dialog-box input, .dialog-box select { width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border); border-radius: 5px; font-size: 14px; background-color: var(--input-bg); color: var(--text-color); box-sizing: border-box; }
         .dialog-box input:focus { border-color: var(--primary); outline: none; }
         .dialog-buttons { display: flex; justify-content: center; gap: 20px; margin-top: 20px; }
-        
         .btn-base { border: none; border-radius: 4px; padding: 8px 0; font-size: 14px; cursor: pointer; transition: all 0.3s ease; font-weight: 500; min-width: 100px; text-align: center; display: inline-block; }
         .btn-confirm { background-color: var(--primary); color: white; }
         .btn-cancel { background-color: var(--btn-gray); color: var(--btn-gray-text); }
 
-        /* 备份列表样式 */
+        /* 备份 */
         .backup-header-info { background-color: var(--input-bg); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .backup-list-wrapper { border: 1px solid var(--border); border-radius: 6px; max-height: 300px; overflow-y: auto; }
         .backup-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
         .restore-link { color: #3498db; text-decoration: none; cursor: pointer; margin-right: 10px; }
         .trash-icon svg { width: 16px; height: 16px; stroke: var(--danger); fill: none; stroke-width: 2; vertical-align: middle; cursor: pointer; }
 
-        /* Loading 动画 */
+        /* 动画 & 其他 */
         #loading-mask .dialog-box { width: 300px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .spinner { width: 36px; height: 36px; border: 4px solid #eee; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; margin-bottom: 15px; }
-
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Tooltip (圆角矩形、阴影) */
-        #custom-tooltip { 
-            position: fixed; display: none; z-index: 3001; 
-            background: var(--primary); color: #fff; 
-            padding: 8px 12px; border-radius: 6px; font-size: 13px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
-            pointer-events: none; line-height: 1.5; 
-            max-width: 300px; word-wrap: break-word; 
-        }
+        #custom-tooltip { position: fixed; display: none; z-index: 3001; background: var(--primary); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); pointer-events: none; line-height: 1.5; max-width: 300px; word-wrap: break-word; }
         #general-dialog { z-index: 2500; }
         #loading-mask { z-index: 3000; }
 
-        /* === 移动端适配 === */
+        /* 移动端适配 */
         @media (max-width: 480px) {
             .fixed-elements { height: auto; padding: 10px 5px 5px; position: fixed; }
-            /* [修改] 移动端标题加粗 (900) */
-            .fixed-elements h3 { font-size: 18px; top: 12px; left: 15px; font-weight: 900; }
-            .center-content { padding: 0 10px; margin-top: 45px; width: 100%; }
-            #hitokoto { margin: 3px 0 8px; font-size: 12px; }
             
+            /* 移动端标题区域 */
+            .fixed-elements h3 { 
+                font-size: 24px; 
+                /* 垂直居中调整：按钮top:18, height:28 -> centerY=32. Logo height:42 -> top=32-21=11 */
+                top: 11px; 
+                left: 12px; 
+                font-weight: 800; 
+                letter-spacing: 1px;
+                display: flex; align-items: center; 
+                gap: 2px; /* Logo文字间距 */
+            }
+            
+            /* 移动端显示文字，并加粗 */
+            .app-title { 
+                display: block; 
+                font-size: 20px; 
+                font-weight: 900; /* 极粗 */
+                margin-left: 0; 
+                letter-spacing: 0.5px;
+            }
+            
+            /* 移动端Logo放大 */
+            .logo-icon { width: 42px; height: 42px; }
+            
+            /* 移动端右上角控制区 */
+            .top-right-controls { top: 18px; right: 16px; gap: 6px; }
+
+            /* 移动端按钮缩小 */
+            .header-btn, .bookmark-search-toggle {
+                height: 28px !important; 
+                min-width: auto; 
+                font-size: 11px; 
+                padding: 0 8px; 
+                line-height: 28px;
+            }
+            .bookmark-search-toggle { width: 28px; } 
+            .bookmark-search-toggle svg { width: 14px; height: 14px; }
+
+            /* 恢复间距 */
+            .center-content { padding: 0 10px; margin-top: 55px; width: 100%; }
+            
+            #hitokoto { margin: 3px 0 8px; font-size: 12px; }
             .category-buttons-container { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 5px; scrollbar-width: none; }
             .category-buttons-container::-webkit-scrollbar { display: none; }
             .category-button { flex-shrink: 0; font-size: 12px; padding: 5px 12px; }
-            
             .content { padding: 10px; padding-bottom: 220px !important; }
-            /* 移动端双列布局 */
             .card-container { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 5px; align-items: stretch; display: grid; }
             .card { width: 100%; height: 100%; margin: 0; box-sizing: border-box; overflow: hidden; }
             
-            /* [修改] 移动端搜索框宽度优化 */
+            /* 移动端搜索框 */
             .search-bar { width: 92%; margin-left: auto; margin-right: auto; }
             .search-bar select { min-width: 0; width: 80px; padding: 8px 0; text-align: center; text-indent: 0; }
             
-            .header-btn { padding: 0 10px; font-size: 12px; height: 32px; min-width: auto; }
-            .bookmark-search-toggle { width: 32px; height: 32px; }
-            
-            /* 移动端悬浮按钮下移 */
             .add-remove-controls { top: auto; transform: none; bottom: 140px; right: 15px; }
             .floating-button-group { bottom: 30px; right: 15px; }
-            
             .round-btn { width: 38px; height: 38px; }
-            .top-right-controls { top: 12px; right: 10px; gap: 8px; }
             
-            /* [修改] 移动端分类标题宽度优化：95px */
             .section-title { font-size: 17px; padding-left: 10px; margin-top: 10px; width: 95px; min-width: 95px; }
             
             .dialog-box { width: 85%; padding: 20px; }
@@ -358,10 +217,19 @@ const HTML_CONTENT = `
 </head>
 <body>
     <div class="fixed-elements">
-        <h3>FlowTab</h3>
+        <!-- 标题部分：使用内嵌SVG以支持CSS变色 -->
+        <h3>
+            <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- 添加 logo-bg 类，通过CSS var(--primary) 控制填充色 -->
+                <rect class="logo-bg" x="10" y="20" width="80" height="60" rx="12" />
+                <path d="M10 50 C 30 40, 70 80, 90 50" stroke="white" stroke-width="8" stroke-linecap="round"/>
+                <circle cx="75" cy="35" r="6" fill="white"/>
+            </svg>
+            <span class="app-title">FlowTab</span>
+        </h3>
         <div class="center-content">
-            <p id="hitokoto"><a href="#" id="hitokoto_text"></a></p>
-            <script src="https://v1.hitokoto.cn/?encode=js&select=%23hitokoto" defer></script>
+            <!-- 一言：仅展示，移除复制 -->
+            <p id="hitokoto"><span id="hitokoto_text">Loading...</span></p>
             <div class="search-container">
                 <div class="search-bar">
                     <select id="search-engine-select">
@@ -382,7 +250,7 @@ const HTML_CONTENT = `
             <button class="header-btn" id="login-btn" onclick="handleLoginClick()">退出登录</button>
             <div class="bookmark-search-toggle" onclick="toggleBookmarkSearch()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <div class="bookmark-search-dropdown" id="bookmark-search-dropdown">
+                <div class="bookmark-search-dropdown" id="bookmark-search-dropdown" onclick="event.stopPropagation()">
                     <input type="text" id="bookmark-search-input" placeholder="搜索书签...">
                 </div>
             </div>
@@ -410,7 +278,7 @@ const HTML_CONTENT = `
         <div id="sections-container"></div>
         <div class="floating-button-group">
             <button class="round-btn" id="back-to-top-btn" onclick="scrollToTop()" style="display: none;">
-                <!-- 双向上箭头图标 -->
+                <!-- 返回顶部：双折线箭头 -->
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"></polyline><polyline points="17 18 12 13 7 18"></polyline></svg>
             </button>
             <button class="round-btn" onclick="toggleTheme()">
@@ -454,7 +322,60 @@ const HTML_CONTENT = `
     // 搜索逻辑
     el('search-engine-select').value = state.engine; el('search-engine-select').onchange = e => { state.engine = e.target.value; localStorage.setItem('se', state.engine); }; el('search-button').onclick = () => { const q = el('search-input').value; if(q) window.open(searchEngines[state.engine] + encodeURIComponent(q), '_blank'); }; el('search-input').onkeypress = e => e.key==='Enter' && el('search-button').click();
 
-    // 核心逻辑
+    // [修改] 一言逻辑：仅保留展示功能
+    function fetchHitokoto() {
+        const hitokoto = el('hitokoto_text');
+        if(!hitokoto) return;
+        
+        // 本地备用语录（纯中文）
+        const backupQuotes = [
+            "生活明朗，万物可爱。",
+            "星光不问赶路人，时光不负有心人。",
+            "保持热爱，奔赴山海。",
+            "世间所有的相遇，都是久别重逢。",
+            "心有猛虎，细嗅蔷薇。",
+            "既然选择了远方，便只顾风雨兼程。",
+            "未曾长夜痛哭者，不足以语人生。",
+            "满地都是六便士，他却抬头看见了月亮。"
+        ];
+
+        const getBackup = () => backupQuotes[Math.floor(Math.random() * backupQuotes.length)];
+        
+        // 发起请求（仅保留中文类别）
+        const randomParam = '&c=a&c=b&c=c&c=d&c=h&c=i&c=k&_r=' + Math.random();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒超时
+
+        fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8' + randomParam, {
+            signal: controller.signal,
+            cache: 'no-store'
+        })
+        .then(response => response.json())
+        .then(data => {
+            clearTimeout(timeoutId);
+            if(data && data.hitokoto) {
+                hitokoto.innerText = data.hitokoto;
+            } else {
+                hitokoto.innerText = getBackup();
+            }
+        })
+        .catch(err => {
+            clearTimeout(timeoutId);
+            hitokoto.innerText = getBackup();
+        });
+    }
+
+    // [新增] 动态更新 Favicon 颜色
+    function updateFavicon(theme) {
+        // 浅色模式绿: #43b883 (%2343b883), 深色模式蓝: #5d7fb9 (%235d7fb9)
+        const color = theme === 'dark' ? '%235d7fb9' : '%2343b883';
+        const favicon = document.getElementById('dynamic-favicon');
+        if(favicon) {
+            const svgData = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'><rect x='10' y='20' width='80' height='60' rx='12' fill='" + color + "' /><path d='M10 50 C 30 40, 70 80, 90 50' stroke='white' stroke-width='8' stroke-linecap='round'/><circle cx='75' cy='35' r='6' fill='white'/></svg>";
+            favicon.href = svgData;
+        }
+    }
+
     async function loadLinks() { const res = await api('/api/getLinks?userId=testUser'); if (res.error === 'auth') return resetLogin(); if (res.categories) state.categories = res.categories; state.publicLinks = (res.links||[]).filter(l=>!l.isPrivate); state.privateLinks = (res.links||[]).filter(l=>l.isPrivate); state.links = state.isLoggedIn ? [...state.publicLinks, ...state.privateLinks] : state.publicLinks; renderSections(); updateUI(); updateCategoryButtons(); setTimeout(adjustOffset, 100); setTimeout(updateActiveCategory, 100); }
 
     function renderSections() {
@@ -466,7 +387,6 @@ const HTML_CONTENT = `
                 const title = document.createElement('div'); title.className = 'section-title-container';
                 let adminBtns = '';
                 if(state.isEditMode) {
-                    // 实心加粗箭头按钮
                     adminBtns = '<div class="section-controls">' +
                                 '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
                                 '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
@@ -496,7 +416,41 @@ const HTML_CONTENT = `
         cont.appendChild(card);
     }
 
-    function updateCategoryButtons() { const c = el('category-buttons-container'); c.innerHTML = ''; const secs = document.querySelectorAll('.section'); if(!secs.length) { c.style.display='none'; return; } c.style.display='flex'; secs.forEach(s => { const btn = document.createElement('button'); btn.className = 'category-button'; btn.textContent = s.id; btn.onclick = () => { document.querySelectorAll('.category-button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); const headerHeight = document.querySelector('.fixed-elements').offsetHeight; const targetPos = s.offsetTop - headerHeight - 15; window.scrollTo({ top: targetPos, behavior: 'smooth' }); }; c.appendChild(btn); }); setTimeout(adjustOffset, 50); }
+    function updateCategoryButtons() {
+        const c = el('category-buttons-container');
+        c.innerHTML = '';
+        const cats = Object.keys(state.categories);
+        if(!cats.length) { c.style.display='none'; return; }
+        c.style.display='flex';
+        cats.forEach(cat => {
+            const hasLinks = state.links.some(l => l.category === cat);
+            if (!hasLinks && !state.isAdmin) return;
+
+            const btn = document.createElement('button');
+            btn.className = 'category-button';
+            btn.textContent = cat;
+            btn.onclick = () => {
+                const searchInput = el('bookmark-search-input');
+                if(searchInput && searchInput.value) {
+                    searchInput.value = '';
+                    renderSections();
+                }
+                setTimeout(() => {
+                    const section = el(cat);
+                    if(section) {
+                        document.querySelectorAll('.category-button').forEach(b=>b.classList.remove('active'));
+                        btn.classList.add('active');
+                        const headerHeight = document.querySelector('.fixed-elements').offsetHeight;
+                        const targetPos = section.offsetTop - headerHeight - 15;
+                        window.scrollTo({ top: targetPos, behavior: 'smooth' });
+                    }
+                }, 10);
+            };
+            c.appendChild(btn);
+        });
+        setTimeout(adjustOffset, 50);
+    }
+
     async function handleAdminBtnClick() { if (state.isAdmin) { el('general-dialog-title').textContent = '提示'; el('general-dialog-content').textContent = '是否要保存您在设置模式中所做的修改？'; el('general-dialog-input').style.display='none'; el('general-cancel').style.display='inline-block'; el('general-cancel').textContent='不保存'; el('general-confirm').textContent='保存'; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = async () => { hideDialog('general-dialog'); await saveData(); state.isAdmin = false; state.isEditMode = false; updateUI(); renderSections(); customAlert('设置已保存'); }; nCancel.onclick = () => { hideDialog('general-dialog'); state.isAdmin = false; state.isEditMode = false; updateUI(); loadLinks(); customAlert('已放弃修改'); }; } else { if(!await validateToken()) return; showLoading('正在进入设置模式...'); try { await api('/api/backupData', 'POST', {sourceUserId:'testUser'}); } catch(e){} hideLoading(); state.isAdmin = true; state.isEditMode = true; updateUI(); renderSections(); updateCategoryButtons(); } }
     async function dropCard(e, targetCat) { e.preventDefault(); const url = window.draggedUrl; if(!url) return; const idx = state.links.findIndex(l => l.url === url); if(idx > -1) { state.links[idx].category = targetCat; state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); } window.draggedUrl = null; }
     function updateUI() { const loginBtn = el('login-btn'); const adminBtn = el('admin-btn'); if (state.isLoggedIn) { loginBtn.textContent = '退出登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'inline-block'; adminBtn.textContent = state.isAdmin ? '离开设置' : '设置'; } else { loginBtn.textContent = '登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'none'; } document.querySelector('.add-remove-controls').style.display = state.isAdmin ? 'flex' : 'none'; if(state.isAdmin) document.body.classList.add('admin-mode'); else document.body.classList.remove('admin-mode'); const s = el('category-select'); if(s) { s.innerHTML=''; Object.keys(state.categories).forEach(k=>s.add(new Option(k,k))); } setTimeout(adjustOffset, 50); }
@@ -519,19 +473,28 @@ const HTML_CONTENT = `
     async function restoreBackup(id) { if(await customConfirm('确定恢复？当前未保存修改将丢失。')) { showLoading('恢复...'); const r = await api('/api/restoreFromBackup', 'POST', {userId:'testUser', backupId:id}); hideLoading(); if(r.success) { hideDialog('backup-modal'); loadLinks(); customAlert('成功'); } else customAlert('失败'); } }
     async function deleteBackup(id) { if(await customConfirm('删除此备份？')) { showLoading('删除...'); await api('/api/deleteBackup', 'POST', {backupId:id}); hideLoading(); showBackupManager(); } }
     function toggleBookmarkSearch() { const dd = el('bookmark-search-dropdown'); dd.classList.toggle('show'); if(dd.classList.contains('show')) { const i = el('bookmark-search-input'); i.focus(); i.oninput = e => { const q = e.target.value.toLowerCase(); if(!q) return renderSections(); el('sections-container').innerHTML = '<div class="section"><div class="card-container" id="s-res"></div></div>'; const c = el('s-res'); state.links.filter(l=>l.name.toLowerCase().includes(q)).forEach(l=>createCard(l,c)); } } else renderSections(); }
-    function showTooltip(e,t) { if(!t) return; const tt=el('custom-tooltip'); tt.textContent=t; tt.style.display='block'; const offset = 15; let x = e.clientX + offset; let y = e.clientY + offset; const rect = tt.getBoundingClientRect(); if(x + rect.width > window.innerWidth) x = e.clientX - rect.width - 5; if(y + rect.height > window.innerHeight) y = e.clientY - rect.height - 5; tt.style.left = x + 'px'; tt.style.top = y + 'px'; }
-    function toggleTheme() { const d = document.body.classList.toggle('dark-theme'); localStorage.setItem('theme', d?'dark':'light'); }
-    function scrollToTop() { window.scrollTo({ top:0, behavior:'smooth' }); }
     
-    // ScrollSpy
+    function toggleTheme() { 
+        const d = document.body.classList.toggle('dark-theme'); 
+        const theme = d ? 'dark' : 'light';
+        localStorage.setItem('theme', theme);
+        updateFavicon(theme);
+    }
+
+    function showTooltip(e,t) { if(!t) return; const tt=el('custom-tooltip'); tt.textContent=t; tt.style.display='block'; const offset = 15; let x = e.clientX + offset; let y = e.clientY + offset; const rect = tt.getBoundingClientRect(); if(x + rect.width > window.innerWidth) x = e.clientX - rect.width - 5; if(y + rect.height > window.innerHeight) y = e.clientY - rect.height - 5; tt.style.left = x + 'px'; tt.style.top = y + 'px'; }
+    function scrollToTop() { window.scrollTo({ top:0, behavior:'smooth' }); }
     function updateActiveCategory() { const sections = document.querySelectorAll('.section'); if (!sections.length) return; const header = document.querySelector('.fixed-elements'); const headerHeight = header ? header.offsetHeight : 0; const triggerPoint = window.scrollY + headerHeight + 20; let currentId = ''; sections.forEach(section => { const sectionTop = section.offsetTop; if (sectionTop <= triggerPoint) { currentId = section.id; } }); if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 10) { if(sections.length) currentId = sections[sections.length - 1].id; } const buttons = document.querySelectorAll('.category-button'); buttons.forEach(btn => { if (btn.textContent === currentId) { btn.classList.add('active'); } else { btn.classList.remove('active'); } }); }
     window.addEventListener('scroll', () => { el('back-to-top-btn').style.display = window.scrollY > 300 ? 'flex' : 'none'; updateActiveCategory(); });
     window.addEventListener('load', updateActiveCategory); window.addEventListener('resize', updateActiveCategory);
 
     document.addEventListener('DOMContentLoaded', async () => {
-        if(localStorage.getItem('theme')==='dark') document.body.classList.add('dark-theme');
+        if(localStorage.getItem('theme')==='dark') {
+            document.body.classList.add('dark-theme');
+            updateFavicon('dark');
+        }
         if(await validateToken()) { state.isLoggedIn=true; updateUI(); }
         loadLinks();
+        fetchHitokoto(); // 调用一言
     });
     </script>
 </body>
@@ -540,14 +503,14 @@ const HTML_CONTENT = `
 
 // 2. 后端 Worker 逻辑
 function safeCompare(a,b){if(a.length!==b.length)return false;let result=0;for(let i=0;i<a.length;i++)result|=a.charCodeAt(i)^b.charCodeAt(i);return result===0}
-const jsonRes=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
+const jsonRes=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate'}});
 async function auth(req,env,requireAdmin=false){const token=req.headers.get('Authorization');if(!token)return{ok:false,err:'未登录'};try{const[ts,hash]=token.split('.');if(Date.now()-parseInt(ts)>30*24*3600*1000)return{ok:false,err:'Token过期'};const data=new TextEncoder().encode(ts+"_"+env.ADMIN_PASSWORD);const expected=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',data))));if(!safeCompare(hash,expected))return{ok:false,err:'无效Token'};return{ok:true}}catch{return{ok:false,err:'验证异常'}}}
 
 export default {
     async fetch(req, env) {
         const url = new URL(req.url);
         const path = url.pathname;
-        if (path === '/') return new Response(HTML_CONTENT, { headers: { 'Content-Type': 'text/html' } });
+        if (path === '/') return new Response(HTML_CONTENT, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache, no-store, must-revalidate' } });
 
         if (path === '/api/verifyPassword' && req.method === 'POST') {
             const { password } = await req.json();
@@ -581,7 +544,8 @@ export default {
                 const data = await env.CARD_ORDER.get(sourceUserId);
                 if(!data) return jsonRes({ success: false, message: '无数据' });
                 const d = new Date(new Date().getTime() + 8 * 3600 * 1000);
-                const backupId = `backup_${d.toISOString().replace(/[-:]/g, '').slice(0, 15)}`; 
+                // [修改] 修复 SyntaxError，使用字符串拼接代替模板字符串，避免转义问题
+                const backupId = 'backup_' + d.toISOString().replace(/[-:]/g, '').slice(0, 15);
                 await env.CARD_ORDER.put(backupId, data);
                 const list = await env.CARD_ORDER.list({ prefix: 'backup_' });
                 const keys = list.keys.map(k => k.name).sort().reverse();
