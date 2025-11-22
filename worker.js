@@ -1,10 +1,9 @@
 /**
  * FlowTab Cloudflare Worker Script
- * 包含前端 HTML/CSS/JS 和后端 KV 存储逻辑
- * 请将此文件全部内容复制到 Cloudflare Worker 编辑器中
+ * 请全选复制所有代码，不要遗漏底部的 export default 部分
  */
 
-// 1. 定义前端 HTML 内容 (作为字符串常量)
+// 1. 定义前端 HTML 内容
 const HTML_CONTENT = `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -12,7 +11,6 @@ const HTML_CONTENT = `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FlowTab</title>
-    <!-- Favicon: 动态 Emoji -->
     <link id="dynamic-favicon" rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
     <style>
         * { box-sizing: border-box; }
@@ -20,30 +18,19 @@ const HTML_CONTENT = `
         body.dark-theme { --bg-color: #121418; --text-color: #e3e3e3; --card-bg: #1e2128; --primary: #5d7fb9; --primary-hover: #4a6fa5; --danger: #e74c3c; --info: #5d7fb9; --shadow: rgba(0, 0, 0, 0.2); --border: #444; --input-bg: #252830; --dialog-bg: #2d3748; --btn-gray: #374151; --btn-gray-text: #d1d5db; }
         body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); color: var(--text-color); transition: all 0.3s ease; overflow-x: hidden; }
         
-        /* 顶部固定区 */
         .fixed-elements { position: fixed; top: 0; left: 0; right: 0; background-color: var(--bg-color); z-index: 1000; padding: 10px; height: auto; min-height: 100px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: all 0.3s ease; }
-        
-        .fixed-elements h3 { 
-            position: absolute; top: 10px; left: 20px; margin: 0; 
-            font-size: 24px; font-weight: 800; color: var(--primary); 
-            letter-spacing: 1px; display: flex; align-items: center; gap: 8px; 
-        }
-        
+        .fixed-elements h3 { position: absolute; top: 10px; left: 20px; margin: 0; font-size: 24px; font-weight: 800; color: var(--primary); letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
         .logo-icon { width: 32px; height: 32px; }
         .logo-bg { fill: var(--primary); transition: fill 0.3s ease; }
-        
         .center-content { width: 100%; max-width: 900px; text-align: center; margin: 0 auto; padding-top: 10px; }
         
-        /* 语录样式 */
         #hitokoto { margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; max-width: 600px; margin-left: auto; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; user-select: text; min-height: 20px; }
         
         .search-container { margin-top: 10px; display: flex; justify-content: center; width: 100%; }
         .search-bar { display: flex; justify-content: center; margin-bottom: 10px; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); border: 1px solid var(--border); background-color: var(--card-bg); }
         .search-bar:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(67, 184, 131, 0.2); }
-        
         .search-bar select { border: none; background-color: rgba(0,0,0,0.02); padding: 8px 0; font-size: 13px; color: var(--primary); font-weight: bold; outline: none; cursor: pointer; width: 80px; text-align: center; text-align-last: center; }
         .search-bar select option { text-align: left; }
-        
         .search-bar input { flex: 1; border: none; padding: 10px 15px; font-size: 14px; background-color: transparent; outline: none; color: var(--text-color); min-width: 0; }
         .search-bar button { border: none; background-color: var(--primary); color: white; padding: 0 20px; cursor: pointer; flex-shrink: 0; }
         
@@ -53,7 +40,6 @@ const HTML_CONTENT = `
         
         .top-right-controls { position: fixed; top: 12px; right: 20px; display: flex; align-items: center; gap: 10px; z-index: 1001; }
         .header-btn, .bookmark-search-toggle { height: 38px; }
-        
         .bookmark-search-toggle { background-color: var(--primary); color: white; border: none; border-radius: 4px; padding: 0; cursor: pointer; width: 38px; display: flex; align-items: center; justify-content: center; }
         .bookmark-search-toggle svg { width: 20px; height: 20px; stroke: white; stroke-width: 2.5; }
         .bookmark-search-dropdown { position: absolute; top: 100%; right: 0; width: 200px; background-color: var(--card-bg); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); padding: 8px; margin-top: 8px; display: none; }
@@ -63,18 +49,14 @@ const HTML_CONTENT = `
         .header-btn:hover { background-color: var(--primary-hover); }
         
         .content { margin-top: 180px; padding: 10px; max-width: 1500px; margin-left: auto; margin-right: auto; padding-bottom: 100px; }
-        
         .section-title-container { display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 8px; scroll-margin-top: 180px; }
         .section-title { font-size: 20px; font-weight: bold; color: var(--primary); position: relative; padding-left: 12px; margin-right: 10px; width: 130px; min-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .section-title:before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 18px; background-color: var(--primary); border-radius: 2px; }
         .section-controls { display: flex; align-items: center; gap: 5px; margin-left: 0; height: 28px; }
-        
         .mini-btn { width: 28px; height: 28px; padding: 0; border-radius: 6px; margin: 0 !important; display: inline-flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; border: none; transition: transform 0.2s; }
         .mini-btn:hover { transform: scale(1.1); }
         .mini-btn svg { width: 16px; height: 16px; stroke: white; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-        .btn-edit { background-color: var(--primary); } 
-        .btn-del { background-color: var(--danger); } 
-        .btn-move { background-color: #5d7fb9; }
+        .btn-edit { background-color: var(--primary); } .btn-del { background-color: var(--danger); } .btn-move { background-color: #5d7fb9; }
 
         .card-container { display: grid; grid-template-columns: repeat(auto-fill, 170px); gap: 15px; padding: 15px 5px; justify-content: center; }
         .card { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); cursor: pointer; transition: all 0.3s ease; position: relative; animation: fadeIn 0.3s ease forwards; opacity: 0; animation-delay: calc(var(--card-index) * 0.05s); display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
@@ -93,8 +75,7 @@ const HTML_CONTENT = `
         .action-btn-square { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s; pointer-events: none; }
         .overlay-half:hover .action-btn-square { transform: scale(1.1); }
         .action-btn-square svg { width: 18px; height: 18px; fill: none; stroke: white; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-        .btn-edit-card { background-color: var(--primary); } 
-        .btn-del-card { background-color: var(--danger); }
+        .btn-edit-card { background-color: var(--primary); } .btn-del-card { background-color: var(--danger); }
 
         .add-remove-controls { display: none; flex-direction: column; position: fixed; right: 20px; top: 50%; transform: translateY(-50%); gap: 15px; z-index: 900; align-items: center; }
         .floating-button-group { position: fixed; bottom: 50px; right: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 1000; }
@@ -261,33 +242,33 @@ const HTML_CONTENT = `
         if(!hitokoto) return;
 
         // 极简静态兜底
-        const lastResort = "不抛弃，不放弃。——《士兵突击》";
+        const lastResort = "倚天照海花无数，流水高山心自知。";
 
-        // 1. 优先：今日诗词 (古典诗词)
-        fetch('https://v1.jinrishici.com/all.json')
-            .then(response => response.json())
-            .then(data => {
-                if(data && data.content) {
-                    hitokoto.innerText = data.content + " —— " + (data.author || "") + "《" + (data.origin || "未知") + "》";
+        // 1. 优先：Hitokoto (限定影视/文学/诗词/哲学)
+        // c=h(影视), c=d(文学), c=i(诗词), c=k(哲学)
+        fetch('https://v1.hitokoto.cn/?c=h&c=d&c=i&c=k&encode=json&charset=utf-8')
+            .then(r => r.json())
+            .then(d => {
+                if(d && d.hitokoto) {
+                    hitokoto.innerText = d.hitokoto + (d.from ? " ——《" + d.from + "》" : "");
                 } else {
-                    throw new Error("Jinrishici format error");
+                    throw new Error("Hitokoto format error");
                 }
             })
-            .catch(err => {
-                console.log("Jinrishici failed, trying Hitokoto...", err);
-                // 2. 备选：Hitokoto (限定影视/文学/诗词/哲学)
-                // c=h(影视), c=d(文学), c=i(诗词), c=k(哲学)
-                fetch('https://v1.hitokoto.cn/?c=h&c=d&c=i&c=k&encode=json&charset=utf-8')
-                    .then(r => r.json())
-                    .then(d => {
-                        if(d && d.hitokoto) {
-                            hitokoto.innerText = d.hitokoto + (d.from ? " ——《" + d.from + "》" : "");
+            .catch(e => {
+                console.log("Hitokoto failed, trying Jinrishici...", e);
+                // 2. 备选：今日诗词 (古典诗词)
+                fetch('https://v1.jinrishici.com/all.json')
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data && data.content) {
+                            hitokoto.innerText = data.content + " —— " + (data.author || "") + "《" + (data.origin || "未知") + "》";
                         } else {
                             hitokoto.innerText = lastResort;
                         }
                     })
-                    .catch(e => {
-                        console.log("All quotes API failed.", e);
+                    .catch(err => {
+                        console.log("All quotes API failed.", err);
                         hitokoto.innerText = lastResort;
                     });
             });
@@ -330,7 +311,7 @@ const HTML_CONTENT = `
         const card = document.createElement('div'); card.className = 'card ' + (state.isEditMode ? 'no-hover' : ''); card.draggable = state.isAdmin; card.dataset.url = link.url; card.style.setProperty('--card-index', cont.children.length);
         let icon = link.icon; if(!icon || !icon.startsWith('http')) { try { icon = 'https://www.faviconextractor.com/favicon/'+new URL(link.url).hostname; } catch(e){ icon=''; } }
         const safeName = link.name.replace(/</g,'&lt;'); const safeUrl = link.url.replace(/</g,'&lt;');
-        card.innerHTML = '<div class="card-top"><img class="card-icon" src="' + icon + '" onerror="this.src=\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22gray%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/></svg>\\'"><div class="card-title">' + safeName + '</div></div><div class="card-url">' + safeUrl + '</div>' + (link.isPrivate ? '<div class="private-tag">私密</div>' : '');
+        card.innerHTML = '<div class="card-top"><img class="card-icon" src="' + icon + '" onerror="this.src=\\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22gray%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/></svg>\\\'"><div class="card-title">' + safeName + '</div></div><div class="card-url">' + safeUrl + '</div>' + (link.isPrivate ? '<div class="private-tag">私密</div>' : '');
         const overlay = document.createElement('div'); overlay.className = 'card-click-overlay';
         overlay.innerHTML = '<div class="overlay-half left" onclick="event.stopPropagation();showLinkDialog(\\'' + link.url + '\\')"><div class="action-btn-square btn-edit-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right" onclick="event.stopPropagation();removeCard(\\'' + link.url + '\\')"><div class="action-btn-square btn-del-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
         card.appendChild(overlay);
@@ -413,13 +394,14 @@ const HTML_CONTENT = `
     </script>
 </body>
 </html>
-`;
+`; // END OF HTML_CONTENT string literal
 
 // 2. 后端 Worker 逻辑
 function safeCompare(a,b){if(a.length!==b.length)return false;let result=0;for(let i=0;i<a.length;i++)result|=a.charCodeAt(i)^b.charCodeAt(i);return result===0}
 const jsonRes=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate'}});
 async function auth(req,env,requireAdmin=false){const token=req.headers.get('Authorization');if(!token)return{ok:false,err:'未登录'};try{const[ts,hash]=token.split('.');if(Date.now()-parseInt(ts)>30*24*3600*1000)return{ok:false,err:'Token过期'};const data=new TextEncoder().encode(ts+"_"+env.ADMIN_PASSWORD);const expected=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',data))));if(!safeCompare(hash,expected))return{ok:false,err:'无效Token'};return{ok:true}}catch{return{ok:false,err:'验证异常'}}}
 
+// 3. 必须包含 export default
 export default {
     async fetch(req, env) {
         const url = new URL(req.url);
@@ -484,3 +466,4 @@ export default {
         return new Response('Not Found', { status: 404 });
     }
 };
+// 文件结束
