@@ -38,8 +38,8 @@ const HTML_CONTENT = `
         
         .center-content { width: 100%; max-width: 900px; text-align: center; margin: 0 auto; padding-top: 10px; }
         
-        /* 一言样式 (已移除点击效果) */
-        #hitokoto { margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; max-width: 600px; margin-left: auto; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+        /* 一言样式 (允许手动选择) */
+        #hitokoto { margin: 5px 0 15px; font-size: 14px; color: #888; font-style: italic; max-width: 600px; margin-left: auto; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; user-select: text; }
         
         /* 搜索栏 */
         .search-container { margin-top: 10px; display: flex; justify-content: center; width: 100%; }
@@ -457,10 +457,10 @@ const HTML_CONTENT = `
     function showLinkDialog(url=null) { el('link-dialog-title').textContent = url ? '编辑链接' : '添加链接'; el('link-old-url').value = url || ''; const l = url ? state.links.find(i=>i.url===url) : {}; el('name-input').value = l.name||''; el('url-input').value = l.url||''; el('tips-input').value = l.tips||''; el('icon-input').value = l.icon||''; el('category-select').value = l.category || Object.keys(state.categories)[0]; el('private-checkbox').checked = l.isPrivate||false; showDialog('link-dialog'); }
     async function saveLinkFromDialog() { const old = el('link-old-url').value; const n = { name: el('name-input').value.trim(), url: el('url-input').value.trim(), tips: el('tips-input').value.trim(), icon: el('icon-input').value.trim(), category: el('category-select').value, isPrivate: el('private-checkbox').checked }; if(!n.name || !n.url) return customAlert('名称和URL必填'); if(old) state.links = state.links.filter(l=>l.url!==old); else if(state.links.some(l=>l.url===n.url)) return customAlert('URL已存在'); state.links.push(n); if(!state.categories[n.category]) state.categories[n.category]=[]; state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); hideDialog('link-dialog'); }
     async function removeCard(url) { if(await customConfirm('确定删除吗？删除后点击保存生效。')) { state.links = state.links.filter(l=>l.url!==url); state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); } }
-    async function addCategory() { const n = await customPrompt('新分类名称'); if(n) { if(state.categories[n]) return customAlert('分类已存在'); state.categories[n] = []; renderSections(); updateCategoryButtons(); } }
-    async function editCategory(old) { const n = await customPrompt('重命名分类', old); if(n && n!==old) { if(state.categories[n]) return customAlert('分类已存在'); const nc = {}; Object.keys(state.categories).forEach(k=>{ if(k===old) nc[n]=state.categories[old]; else nc[k]=state.categories[k]}); state.categories = nc; state.links.forEach(l=>{ if(l.category===old) l.category=n; }); renderSections(); updateCategoryButtons(); } }
-    async function delCategory(n) { if(await customConfirm('删除分类及所有链接？')) { delete state.categories[n]; state.links = state.links.filter(l=>l.category!==n); state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); updateCategoryButtons(); } }
-    function moveCategory(n, d) { const k = Object.keys(state.categories); const i = k.indexOf(n); if(i+d>=0 && i+d<k.length) { const t=k[i]; k[i]=k[i+d]; k[i+d]=t; const nc={}; k.forEach(x=>nc[x]=state.categories[x]); state.categories=nc; renderSections(); updateCategoryButtons(); } }
+    async function addCategory() { const n = await customPrompt('新分类名称'); if(n) { if(state.categories[n]) return customAlert('分类已存在'); state.categories[n] = []; renderSections(); updateCategoryButtons(); updateUI(); } }
+    async function editCategory(old) { const n = await customPrompt('重命名分类', old); if(n && n!==old) { if(state.categories[n]) return customAlert('分类已存在'); const nc = {}; Object.keys(state.categories).forEach(k=>{ if(k===old) nc[n]=state.categories[old]; else nc[k]=state.categories[k]}); state.categories = nc; state.links.forEach(l=>{ if(l.category===old) l.category=n; }); renderSections(); updateCategoryButtons(); updateUI(); } }
+    async function delCategory(n) { if(await customConfirm('删除分类及所有链接？')) { delete state.categories[n]; state.links = state.links.filter(l=>l.category!==n); state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); updateCategoryButtons(); updateUI(); } }
+    function moveCategory(n, d) { const k = Object.keys(state.categories); const i = k.indexOf(n); if(i+d>=0 && i+d<k.length) { const t=k[i]; k[i]=k[i+d]; k[i+d]=t; const nc={}; k.forEach(x=>nc[x]=state.categories[x]); state.categories=nc; renderSections(); updateCategoryButtons(); updateUI(); } }
     async function saveData() { showLoading('保存...'); await api('/api/saveOrder', 'POST', {userId:'testUser', links:state.links, categories:state.categories}); hideLoading(); renderSections(); }
     async function validateToken() { if(!state.token) return false; const res = await api('/api/getLinks?userId=testUser'); return res.error !== 'auth'; }
     function handleLoginClick() { if(state.isLoggedIn) customConfirm('确定要退出登录？').then(y=>{if(y) resetLogin()}); else { showDialog('login-modal'); el('login-password').value=''; setTimeout(()=>el('login-password').focus(),100); } }
@@ -474,14 +474,19 @@ const HTML_CONTENT = `
     async function deleteBackup(id) { if(await customConfirm('删除此备份？')) { showLoading('删除...'); await api('/api/deleteBackup', 'POST', {backupId:id}); hideLoading(); showBackupManager(); } }
     function toggleBookmarkSearch() { const dd = el('bookmark-search-dropdown'); dd.classList.toggle('show'); if(dd.classList.contains('show')) { const i = el('bookmark-search-input'); i.focus(); i.oninput = e => { const q = e.target.value.toLowerCase(); if(!q) return renderSections(); el('sections-container').innerHTML = '<div class="section"><div class="card-container" id="s-res"></div></div>'; const c = el('s-res'); state.links.filter(l=>l.name.toLowerCase().includes(q)).forEach(l=>createCard(l,c)); } } else renderSections(); }
     
-    function toggleTheme() { 
-        const d = document.body.classList.toggle('dark-theme'); 
-        const theme = d ? 'dark' : 'light';
-        localStorage.setItem('theme', theme);
-        updateFavicon(theme);
+    // [优化] 点击页面空白处关闭下拉框
+    window.onclick = function(e) {
+        if (!e.target.closest('.bookmark-search-toggle')) {
+            const dd = el('bookmark-search-dropdown');
+            if (dd && dd.classList.contains('show')) {
+                 dd.classList.remove('show');
+                 renderSections(); // 恢复
+            }
+        }
     }
 
     function showTooltip(e,t) { if(!t) return; const tt=el('custom-tooltip'); tt.textContent=t; tt.style.display='block'; const offset = 15; let x = e.clientX + offset; let y = e.clientY + offset; const rect = tt.getBoundingClientRect(); if(x + rect.width > window.innerWidth) x = e.clientX - rect.width - 5; if(y + rect.height > window.innerHeight) y = e.clientY - rect.height - 5; tt.style.left = x + 'px'; tt.style.top = y + 'px'; }
+    function toggleTheme() { const d = document.body.classList.toggle('dark-theme'); localStorage.setItem('theme', d?'dark':'light'); }
     function scrollToTop() { window.scrollTo({ top:0, behavior:'smooth' }); }
     function updateActiveCategory() { const sections = document.querySelectorAll('.section'); if (!sections.length) return; const header = document.querySelector('.fixed-elements'); const headerHeight = header ? header.offsetHeight : 0; const triggerPoint = window.scrollY + headerHeight + 20; let currentId = ''; sections.forEach(section => { const sectionTop = section.offsetTop; if (sectionTop <= triggerPoint) { currentId = section.id; } }); if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 10) { if(sections.length) currentId = sections[sections.length - 1].id; } const buttons = document.querySelectorAll('.category-button'); buttons.forEach(btn => { if (btn.textContent === currentId) { btn.classList.add('active'); } else { btn.classList.remove('active'); } }); }
     window.addEventListener('scroll', () => { el('back-to-top-btn').style.display = window.scrollY > 300 ? 'flex' : 'none'; updateActiveCategory(); });
