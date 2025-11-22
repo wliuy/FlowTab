@@ -1,8 +1,3 @@
-/**
- * FlowTab Cloudflare Worker Script
- * 请全选复制所有代码，不要遗漏底部的 export default 部分
- */
-
 // 1. 定义前端 HTML 内容
 const HTML_CONTENT = `
 <!DOCTYPE html>
@@ -112,10 +107,10 @@ const HTML_CONTENT = `
         /* 移动端适配 */
         @media (max-width: 480px) {
             .fixed-elements { height: auto; padding: 10px 5px 5px; position: fixed; }
-            .fixed-elements h3 { font-size: 24px; top: 11px; left: 12px; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 2px; }
+            .fixed-elements h3 { font-size: 24px; top: 10px; left: 12px; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 2px; }
             .app-title { display: block; font-size: 20px; font-weight: 900; margin-left: 0; letter-spacing: 0.5px; }
-            .logo-icon { width: 42px; height: 42px; }
-            .top-right-controls { top: 18px; right: 16px; gap: 6px; }
+            .logo-icon { width: 35px; height: 35px; }
+            .top-right-controls { top: 14px; right: 16px; gap: 6px; }
             .header-btn, .bookmark-search-toggle { height: 28px !important; min-width: auto; font-size: 11px; padding: 0 8px; line-height: 28px; }
             .bookmark-search-toggle { width: 28px; } 
             .bookmark-search-toggle svg { width: 14px; height: 14px; }
@@ -150,7 +145,7 @@ const HTML_CONTENT = `
             <span class="app-title">FlowTab</span>
         </h3>
         <div class="center-content">
-            <p id="hitokoto"><span id="hitokoto_text">正在获取诗词...</span></p>
+            <p id="hitokoto"><span id="hitokoto_text">加载中...</span></p>
             <div class="search-container">
                 <div class="search-bar">
                     <select id="search-engine-select">
@@ -236,41 +231,25 @@ const HTML_CONTENT = `
 
     el('search-engine-select').value = state.engine; el('search-engine-select').onchange = e => { state.engine = e.target.value; localStorage.setItem('se', state.engine); }; el('search-button').onclick = () => { const q = el('search-input').value; if(q) window.open(searchEngines[state.engine] + encodeURIComponent(q), '_blank'); }; el('search-input').onkeypress = e => e.key==='Enter' && el('search-button').click();
 
-    // --- 一言/古诗词逻辑重写 ---
+    // --- 前端逻辑修改：请求 Worker 的 /api/quote ---
     function fetchHitokoto() {
-        const hitokoto = el('hitokoto_text');
-        if(!hitokoto) return;
+        const hitokoto = document.getElementById('hitokoto_text');
+        if (!hitokoto) return;
 
-        // 极简静态兜底
-        const lastResort = "倚天照海花无数，流水高山心自知。";
-
-        // 1. 优先：Hitokoto (限定影视/文学/诗词/哲学)
-        // c=h(影视), c=d(文学), c=i(诗词), c=k(哲学)
-        fetch('https://v1.hitokoto.cn/?c=h&c=d&c=i&c=k&encode=json&charset=utf-8')
-            .then(r => r.json())
-            .then(d => {
-                if(d && d.hitokoto) {
-                    hitokoto.innerText = d.hitokoto + (d.from ? " ——《" + d.from + "》" : "");
-                } else {
-                    throw new Error("Hitokoto format error");
+        // 1. 请求 Worker 内部 API（不再依赖外部不稳定接口）
+        fetch('/api/quote')
+            .then(response => {
+                if (response.ok) {
+                    return response.text(); // 获取文本
                 }
+                throw new Error('Network response was not ok.');
             })
-            .catch(e => {
-                console.log("Hitokoto failed, trying Jinrishici...", e);
-                // 2. 备选：今日诗词 (古典诗词)
-                fetch('https://v1.jinrishici.com/all.json')
-                    .then(response => response.json())
-                    .then(data => {
-                        if(data && data.content) {
-                            hitokoto.innerText = data.content + " —— " + (data.author || "") + "《" + (data.origin || "未知") + "》";
-                        } else {
-                            hitokoto.innerText = lastResort;
-                        }
-                    })
-                    .catch(err => {
-                        console.log("All quotes API failed.", err);
-                        hitokoto.innerText = lastResort;
-                    });
+            .then(text => {
+                hitokoto.innerText = text.trim(); 
+            })
+            .catch(error => {
+                console.error('语录获取失败:', error);
+                hitokoto.innerText = "生活不仅有眼前的苟且，还有读不懂的诗和去不了的远方。";
             });
     }
 
@@ -291,10 +270,10 @@ const HTML_CONTENT = `
                 if(state.isEditMode) {
                     // 注意：此处必须使用单引号拼接字符串，避免与 Worker 的模板字符串冲突
                     adminBtns = '<div class="section-controls">' +
-                                '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\'' + cat + '\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
-                                '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\'' + cat + '\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
-                                '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\'' + cat + '\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
-                                '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\'' + cat + '\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
+                                '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
+                                '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
+                                '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\\'' + cat + '\\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
+                                '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\\'' + cat + '\\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
                                 '</div>';
                 }
                 title.innerHTML = '<div class="section-title">' + cat + '</div>' + adminBtns;
@@ -313,7 +292,7 @@ const HTML_CONTENT = `
         const safeName = link.name.replace(/</g,'&lt;'); const safeUrl = link.url.replace(/</g,'&lt;');
         card.innerHTML = '<div class="card-top"><img class="card-icon" src="' + icon + '" onerror="this.src=\\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22gray%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/></svg>\\\'"><div class="card-title">' + safeName + '</div></div><div class="card-url">' + safeUrl + '</div>' + (link.isPrivate ? '<div class="private-tag">私密</div>' : '');
         const overlay = document.createElement('div'); overlay.className = 'card-click-overlay';
-        overlay.innerHTML = '<div class="overlay-half left" onclick="event.stopPropagation();showLinkDialog(\\'' + link.url + '\\')"><div class="action-btn-square btn-edit-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right" onclick="event.stopPropagation();removeCard(\\'' + link.url + '\\')"><div class="action-btn-square btn-del-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
+        overlay.innerHTML = '<div class="overlay-half left" onclick="event.stopPropagation();showLinkDialog(\\\'' + link.url + '\\\')"><div class="action-btn-square btn-edit-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right" onclick="event.stopPropagation();removeCard(\\\'' + link.url + '\\\')"><div class="action-btn-square btn-del-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
         card.appendChild(overlay);
         if(!state.isAdmin) { card.onclick = () => window.open(link.url.startsWith('http')?link.url:'http://'+link.url, '_blank'); card.onmousemove = e => showTooltip(e, link.tips); card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; } else { card.ondragstart = e => { window.draggedUrl = link.url; e.dataTransfer.effectAllowed = "move"; }; }
         cont.appendChild(card);
@@ -398,7 +377,7 @@ const HTML_CONTENT = `
 
 // 2. 后端 Worker 逻辑
 function safeCompare(a,b){if(a.length!==b.length)return false;let result=0;for(let i=0;i<a.length;i++)result|=a.charCodeAt(i)^b.charCodeAt(i);return result===0}
-const jsonRes=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate'}});
+const jsonRes=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Access-Control-Allow-Origin': '*'}});
 async function auth(req,env,requireAdmin=false){const token=req.headers.get('Authorization');if(!token)return{ok:false,err:'未登录'};try{const[ts,hash]=token.split('.');if(Date.now()-parseInt(ts)>30*24*3600*1000)return{ok:false,err:'Token过期'};const data=new TextEncoder().encode(ts+"_"+env.ADMIN_PASSWORD);const expected=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',data))));if(!safeCompare(hash,expected))return{ok:false,err:'无效Token'};return{ok:true}}catch{return{ok:false,err:'验证异常'}}}
 
 // 3. 必须包含 export default
@@ -407,6 +386,63 @@ export default {
         const url = new URL(req.url);
         const path = url.pathname;
         if (path === '/') return new Response(HTML_CONTENT, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache, no-store, must-revalidate' } });
+
+        // --- 修正：不再请求不稳定的外部接口，改为使用内置的毒鸡汤库 ---
+        if (path === '/api/quote') {
+            const poisonQuotes = [
+                "万事开头难，然后中间难，最后结尾难。",
+                "条条大路通罗马，而有些人就生在罗马。",
+                "以前觉得靠关系的人最无能，接触社会后发现靠关系的人最牛逼。",
+                "努力不一定成功，但不努力一定很轻松。",
+                "比你优秀的人还在努力，那你努力有什么用？",
+                "失败并不可怕，可怕的是你还相信这句话。",
+                "生活不止眼前的苟且，还有读不懂的诗和到不了的远方。",
+                "上帝为你关上一扇门，还会顺手把窗户也关上。",
+                "虽然你长得丑，但是你想得美啊。",
+                "别人是高富帅，你是高血压。",
+                "你全力以赴的样子，真的好狼狈。",
+                "只要是石头，到哪里都不会发光。",
+                "丑小鸭变成白天鹅，不是因为它努力，而是因为它父母是白天鹅。",
+                "世上无难事，只要肯放弃。",
+                "上帝是公平的，给了你丑的外表，还会给你低的智商。",
+                "爱笑的女生运气不会太差，因为运气差的根本笑不出来。",
+                "有时候不努力一把，你都不知道自己有多废物。",
+                "就算失败了99次，也要再努力一次，凑个整。",
+                "你无法叫醒一个装睡的人，但快递小哥可以。",
+                "是金子总会花光的。",
+                "别灰心，人生就是这样，起起落落落落落落落落落落的。",
+                "哪有什么选择恐惧症，还不是因为穷。",
+                "不经历风雨，怎么见彩虹，没有人能随随便便成功；但是不经历风雨，你也可以感冒。",
+                "不要看别人表面上一帆风顺，实际上，他们背地里，也是一帆风顺。",
+                "咸鱼翻身，还是咸鱼。",
+                "此地无银三百两，邻居王二不曾偷。",
+                "好人有好报，坏人有坏报，你没有报，因为你不是人。",
+                "如果你的前女友和现女友同时掉进水里，请问我可以做你男朋友吗？",
+                "趁着年轻多出来走走，以后老了，想走也走不动了。",
+                "你以为有钱人很快乐吗？他们的快乐你根本想象不到。",
+                "长得丑就是病，不然整形医院怎么叫医院？",
+                "你只知道人家表面上光鲜亮丽，却不知道人家背后过得也很好。",
+                "不要把时间浪费在自己不喜欢的事情上，因为你喜欢的事情也做不好。",
+                "没有什么过不去的坎，只有过不完的坎。",
+                "人生就是这样，有欢笑也有泪水。一部分人主要负责欢笑，另一部分人主要负责泪水。",
+                "单身狗怎么了？单身狗也是狗，请爱护动物。",
+                "你觉得自己又丑又穷，一无是处，不要绝望，因为至少你的判断是对的。",
+                "现在的年轻人，年纪轻轻的，怎么就这么穷。",
+                "富人的生活千姿百态，穷人的生活大致相同。",
+                "你努力了不一定成功，但是你不努力，一定很舒服。"
+            ];
+            
+            // 随机返回一条
+            const quote = poisonQuotes[Math.floor(Math.random() * poisonQuotes.length)];
+            
+            return new Response(quote, {
+                headers: {
+                    "Content-Type": "text/plain;charset=UTF-8",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+        // ---------------------------------------
 
         if (path === '/api/verifyPassword' && req.method === 'POST') {
             const { password } = await req.json();
@@ -466,4 +502,3 @@ export default {
         return new Response('Not Found', { status: 404 });
     }
 };
-// 文件结束
