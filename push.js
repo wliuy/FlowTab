@@ -1,61 +1,87 @@
+/**
+ * FlowTab - Git 自动化推送脚本
+ * 用途：针对 FlowTab 项目，一键完成本地修改到 GitHub 的同步
+ * 适配：已适配 ESM 模式 (Type: module)
+ * 使用方法：在终端运行 `node push.js`
+ */
+
 import { execSync } from 'child_process';
+import fs from 'fs';
 
-// ================== 【基础配置】 ==================
-const REPO_URL = 'https://github.com/wliuy/FlowTab.git';
-const BRANCH = 'main';
+// --- 配置区域 ---
+const CONFIG = {
+  // 核心：已更新为 FlowTab 的仓库地址
+  remoteUrl: 'https://github.com/wliuy/FlowTab.git', 
+  branch: 'main', 
+  commitMsg: 'chore: 同步纯净 Worker 核心代码并优化图标' // 你可以根据需要修改这次的提交文案
+};
 
-// 🚀 网络护航：如果你在国内终端 push 卡住，请将下面改为 true，并确保端口与你代理软件一致
-const USE_PROXY = true; 
-const PROXY_URL = 'http://127.0.0.1:7890'; 
-// ==================================================
-
-function runCmd(cmd, description) {
-    try {
-        console.log(`\n[执行中] ${description}...`);
-        // stdio: 'inherit' 可以直接在控制台实时看到 git 的原生进度和输出
-        execSync(cmd, { stdio: 'inherit' });
-    } catch (error) {
-        console.error(`\n❌ [失败] ${description} 发生错误，终止运行。`);
-        process.exit(1);
-    }
+function run(command) {
+  try {
+    console.log(`\x1b[36m正在执行: ${command}\x1b[0m`);
+    // 执行命令并将结果实时输出到控制台
+    execSync(command, { stdio: 'inherit' });
+  } catch (error) {
+    // 捕获异常，但不中断后续简单的逻辑
+    return false;
+  }
+  return true;
 }
 
-(async () => {
-    console.log('=============== 🚀 开始全自动 Git 推送 ===============');
+async function start() {
+  console.log('\x1b[33m🚀 开始执行 FlowTab 自动化推送...\x1b[0m\n');
 
-    // 1. 如果检测到没有初始化 git，全自动帮补上
-    try {
-        execSync('git rev-parse --is-inside-work-tree', { stdio: 'ignore' });
-    } catch (e) {
-        runCmd('git init', '检测到未初始化，正在初始化本地 Git 仓库');
-        runCmd(`git remote add origin ${REPO_URL}`, '关联远程 GitHub 仓库');
-        runCmd(`git branch -M ${BRANCH}`, `创建并切换到主分支 [${BRANCH}]`);
+  // 🛡️ 安全防御：全自动检查并补齐 .gitignore，防止臃肿的 node_modules 污染 GitHub
+  const ignoreContent = 'node_modules/\n.wrangler/\n';
+  if (!fs.existsSync('.gitignore')) {
+    fs.writeFileSync('.gitignore', ignoreContent);
+    console.log('\x1b[32m已自动为你创建并配置 .gitignore（过滤 node_modules 缓存）\x1b[0m');
+  } else {
+    const currentIgnore = fs.readFileSync('.gitignore', 'utf8');
+    if (!currentIgnore.includes('node_modules/')) {
+      fs.appendFileSync('.gitignore', `\n${ignoreContent}`);
+      console.log('\x1b[32m已在现有的 .gitignore 中追加过滤依赖项规则\x1b[0m');
     }
+  }
 
-    // 2. 动态接管终端代理，防止网络连接超时
-    if (USE_PROXY) {
-        console.log(`\n[配置] 已开启终端代理加速: ${PROXY_URL}`);
-        execSync(`git config --local http.proxy ${PROXY_URL}`);
-        execSync(`git config --local https.proxy ${PROXY_URL}`);
-    } else {
-        // 关闭本地代理配置，避免污染
-        try {
-            execSync('git config --local --unset http.proxy', { stdio: 'ignore' });
-            execSync('git config --local --unset https.proxy', { stdio: 'ignore' });
-        } catch (e) {}
-    }
+  // 1. 检查并初始化 Git
+  if (!fs.existsSync('.git')) {
+    console.log('检测到尚未初始化 Git，正在初始化...');
+    run('git init');
+  }
 
-    // 3. 执行标准的暂存与自动化提交
-    runCmd('git add .', '将所有本地修改加入暂存区');
+  // 🌟 核心修复：强制校准本地分支名
+  run(`git branch -M ${CONFIG.branch}`);
 
-    // 自动生成带当前时间戳的提交日志，免去起名字的烦恼
-    const currentTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-    const commitMessage = `自动同步: ${currentTime}`;
-    runCmd(`git commit -m "${commitMessage}"`, `提交到本地仓库 [${commitMessage}]`);
+  // 2. 尝试添加远程仓库地址
+  // 如果已存在会提示 error，脚本会自动跳过
+  run(`git remote add origin ${CONFIG.remoteUrl}`);
 
-    // 4. 彻底推送到云端
-    runCmd(`git push -u origin ${BRANCH}`, `正在推送到 GitHub [${BRANCH}] 分支`);
+  // 3. 添加所有文件
+  run('git add .');
 
-    console.log('\n=============== 🎉 恭喜！全自动推送已完美成功 ===============');
-    console.log('💡 Cloudflare 后台现在应该已经感知到更新，正在自动为你构建 Worker...');
-})();
+  // 4. 提交
+  console.log('正在创建提交记录...');
+  try {
+    // 使用双引号包裹，防止 Windows 命令行解析特殊字符出错
+    execSync(`git commit -m "${CONFIG.commitMsg}"`, { stdio: 'inherit' });
+  } catch (e) {
+    console.log('\x1b[32m提示：没有检测到新改动，无需提交。\x1b[0m');
+  }
+
+  // 5. 推送
+  console.log(`\n\x1b[35m正在推送到 GitHub (${CONFIG.branch})...\x1b[0m`);
+  
+  // 使用 -f (强制) 推送，确保云端与本地完全一致
+  const success = run(`git push -f origin ${CONFIG.branch}`);
+
+  if (success) {
+    console.log('\n\x1b[32m🎉 推送成功！Cloudflare Workers 应该已经开始自动抓取更新了。\x1b[0m');
+  } else {
+    console.log('\n\x1b[31m❌ 推送失败。\x1b[0m');
+    console.log('\x1b[33m💡 温馨提示：如果遇到连接超时，请检查你的代理设置，可尝试在 VS Code 终端手动执行一次：\x1b[0m');
+    console.log('git config --global http.proxy http://127.0.0.1:7890\n');
+  }
+}
+
+start();
