@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flowtab-worker",
+  "main": "index.js",
+  "compatibility_date": "2026-01-01",
+  "kv_namespaces": [
+    {
+      "binding": "CARD_ORDER",
+      "id": "local_debug_kv_id"
+    }
+  ],
+  "vars": {
+    "ADMIN_PASSWORD": "123"
+  }
+}
