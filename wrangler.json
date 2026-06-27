@@ -6,7 +6,6 @@
   "kv_namespaces": [
     {
       "binding": "CARD_ORDER",
-      "id": "local_debug_kv_id"
     }
   ],
   "vars": {
