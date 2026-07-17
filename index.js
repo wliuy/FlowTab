@@ -462,26 +462,29 @@ const HTML_CONTENT = `
         const icon = document.createElement('img');
         icon.className = 'card-icon';
         
-        // 图标多源 fallback: 用户自定义 → faviconextractor → Google favicon → 默认图标
+        // 图标多源 fallback: 用户自定义 → faviconextractor → Google favicon → 网站首字母Logo
         const hasCustomIcon = link.icon && typeof link.icon === 'string' && link.icon.trim() && isValidUrl(link.icon);
         const domain = extractDomain(link.url);
         icon.src = hasCustomIcon ? link.icon : 'https://www.faviconextractor.com/favicon/' + domain;
-        
+
         icon.alt = link.name;
         icon.loading = "lazy";
         icon.referrerPolicy = "no-referrer";
-        
+
         // 图标加载失败 fallback 链
         icon.onerror = function() {
             if (this.dataset.fallbackStep === undefined) this.dataset.fallbackStep = '0';
             const step = parseInt(this.dataset.fallbackStep);
             if (step === 0 && !hasCustomIcon) {
-                // 已经是 faviconextractor，尝试 Google favicon
                 this.src = 'https://www.google.com/s2/favicons?domain=' + domain + '&sz=32';
                 this.dataset.fallbackStep = '1';
             } else {
-                // 最终 fallback
-                this.src = DEFAULT_ICON_BASE64;
+                // 最终 fallback：使用网站首字母 Logo
+                const letter = (link.name || domain).charAt(0).toUpperCase();
+                const colors = ['#43b883','#5d7fb9','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#3498db'];
+                let hash = 0; for(let c of domain) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+                const bg = colors[Math.abs(hash) % colors.length];
+                this.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="' + bg + '"/><text x="16" y="22" text-anchor="middle" font-size="18" font-weight="bold" fill="white" font-family="Arial,sans-serif">' + letter + '</text></svg>');
                 this.onerror = null;
             }
         };
@@ -748,11 +751,24 @@ const HTML_CONTENT = `
                 const r = await api('/api/getTitle?url='+encodeURIComponent(u) + '&t=' + Date.now());
                 let finalTitle = r.title;
                 const errorKeywords = ['出错啦', '403 Forbidden', 'Access Denied', 'Security Check', '禁止访问', '网站防火墙', 'Just a moment'];
-                
+
                 if (!finalTitle || new RegExp('^https?://', 'i').test(finalTitle) || errorKeywords.some(k => finalTitle.includes(k))) {
                     try { finalTitle = new URL(u).hostname; } catch(e) { finalTitle = '新链接'; }
                 }
-                if(!n.value) n.value = finalTitle;
+
+                // 智能分割标题：提取第一个标点符号前的部分作为名称，后面的放到备注
+                if(!n.value && finalTitle) {
+                    const sepMatch = finalTitle.match(/\s*[|｜\-—–:：,，]\s*/);
+                    if (sepMatch && sepMatch.index > 0) {
+                        n.value = finalTitle.substring(0, sepMatch.index).trim();
+                        const suffix = finalTitle.substring(sepMatch.index + sepMatch[0].length).trim();
+                        if (suffix && !el('tips-input').value.trim()) {
+                            el('tips-input').value = suffix;
+                        }
+                    } else {
+                        n.value = finalTitle;
+                    }
+                }
                 
                 // 优化：直接填充图标，不生成候选
                 if(r.icon) { i.value = r.icon; updateIconPreview(); }
