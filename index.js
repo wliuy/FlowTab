@@ -117,6 +117,21 @@ const HTML_CONTENT = `
         #general-dialog { z-index: 2500; }
         #loading-mask { z-index: 3000; }
 
+        .engine-gear { background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; color: #888; transition: color 0.2s; flex-shrink: 0; }
+        .engine-gear:hover { color: var(--primary); }
+        .engine-gear svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .engine-manager-list { max-height: 300px; overflow-y: auto; margin-bottom: 15px; }
+        .engine-manager-item { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; background-color: var(--input-bg); }
+        .engine-manager-item .engine-name { font-weight: 600; font-size: 14px; color: var(--text-color); min-width: 50px; }
+        .engine-manager-item .engine-url { font-size: 12px; color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .engine-manager-item .engine-actions { display: flex; gap: 5px; flex-shrink: 0; }
+        .engine-manager-item .engine-actions button { width: 26px; height: 26px; border-radius: 4px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .engine-manager-item .engine-actions .btn-edit-eng { background-color: var(--primary); color: white; }
+        .engine-manager-item .engine-actions .btn-del-eng { background-color: var(--danger); color: white; }
+        .engine-manager-item .engine-actions .btn-del-eng:disabled { opacity: 0.4; cursor: not-allowed; }
+        .engine-manager-item .engine-actions button svg { width: 14px; height: 14px; stroke: white; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .icon-preview { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-left: 6px; border: 1px solid var(--border); }
+
         /* 移动端适配 */
         @media (max-width: 480px) {
             .fixed-elements { height: auto; padding: 10px 5px 5px; position: fixed; }
@@ -162,12 +177,10 @@ const HTML_CONTENT = `
             <p id="hitokoto"><span id="hitokoto_text"></span></p>
             <div class="search-container">
                 <div class="search-bar">
-                    <select id="search-engine-select">
-                        <option value="baidu">百度</option>
-                        <option value="bing">必应</option>
-                        <option value="google">谷歌</option>
-                        <option value="duckduckgo">DuckDuckGo</option>
-                    </select>
+                    <select id="search-engine-select"></select>
+                    <button class="engine-gear" id="engine-gear-btn" onclick="showEngineManager()" title="管理搜索引擎">
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
                     <input type="text" id="search-input" placeholder="在此搜索...">
                     <button id="search-button">🔍</button>
                 </div>
@@ -220,11 +233,12 @@ const HTML_CONTENT = `
     </div>
 
     <!-- 弹窗 -->
-    <div class="dialog-overlay" id="link-dialog"><div class="dialog-box"><h3 class="dialog-title" id="link-dialog-title">添加链接</h3><input type="hidden" id="link-old-url"><label>名称 (必填)</label><input type="text" id="name-input" placeholder="名称"><label>URL (必填)</label><input type="text" id="url-input" placeholder="https://..." onblur="autoFillTitle()"><label>描述 (可选)</label><input type="text" id="tips-input" placeholder="描述"><label>图标 URL (可选)</label><input type="text" id="icon-input" placeholder="图标地址"><div id="icon-candidates" style="margin-bottom:15px;display:flex;gap:10px;min-height:0;"></div><label>分类</label><select id="category-select"></select><div style="margin-top:10px;display:flex;align-items:center"><input type="checkbox" id="private-checkbox" style="width:auto;margin:0 10px 0 0"><span style="font-size:14px;color:var(--text-color)">设为私密链接</span></div><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('link-dialog')">取消</button><button class="btn-base btn-confirm" id="link-confirm-btn" onclick="saveLinkFromDialog()">确定</button></div></div></div>
+    <div class="dialog-overlay" id="link-dialog"><div class="dialog-box"><h3 class="dialog-title" id="link-dialog-title">添加链接</h3><input type="hidden" id="link-old-url"><label>名称 (必填)</label><input type="text" id="name-input" placeholder="名称"><label>URL (必填)</label><input type="text" id="url-input" placeholder="https://..." onblur="autoFillTitle()"><label>描述 (可选)</label><input type="text" id="tips-input" placeholder="描述"><label>图标 URL (可选) <img id="icon-preview" class="icon-preview" style="display:none"></label><input type="text" id="icon-input" placeholder="图标地址" oninput="updateIconPreview()"><div id="icon-candidates" style="margin-bottom:15px;display:flex;gap:10px;min-height:0;"></div><label>分类</label><select id="category-select"></select><div style="margin-top:10px;display:flex;align-items:center"><input type="checkbox" id="private-checkbox" style="width:auto;margin:0 10px 0 0"><span style="font-size:14px;color:var(--text-color)">设为私密链接</span></div><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('link-dialog')">取消</button><button class="btn-base btn-confirm" id="link-confirm-btn" onclick="saveLinkFromDialog()">确定</button></div></div></div>
     <div class="dialog-overlay" id="login-modal"><div class="dialog-box" style="width:300px"><h3 class="dialog-title">登录</h3><input type="password" id="login-password" placeholder="请输入密码"><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('login-modal')">取消</button><button class="btn-base btn-confirm" onclick="performLogin()">确定</button></div></div></div>
     <div class="dialog-overlay" id="backup-modal"><div class="dialog-box" style="width:550px;max-width:90%;padding:0;overflow:hidden"><div style="padding:20px;border-bottom:1px solid var(--border)"><h3 style="margin:0;font-size:18px;color:var(--text-color);text-align:left">历史备份节点列表</h3><p style="margin:5px 0 0;font-size:12px;color:#888">我们为您在云端最多保留10个历史备份节点。</p></div><div style="padding:20px"><div class="backup-header-info"><span id="last-backup-time" style="font-size:13px;color:var(--text-color)">加载中...</span><button class="btn-base btn-confirm" onclick="handleManualBackup()" style="padding:6px 15px;min-width:auto">🚀 立即备份</button></div><h4 style="margin:0 0 10px;font-size:14px;color:var(--text-color)">云端历史备份节点</h4><div id="backup-list-container" class="backup-list-wrapper"></div></div><div style="padding:15px 20px;background-color:var(--input-bg);text-align:right;border-top:1px solid var(--border)"><button class="btn-base btn-cancel" onclick="hideDialog('backup-modal')">关闭</button></div></div></div>
     <div class="dialog-overlay" id="general-dialog"><div class="dialog-box"><h3 class="dialog-title" id="general-dialog-title">提示</h3><div id="general-dialog-content" style="margin-bottom:20px;text-align:center;color:var(--text-color);line-height:1.5"></div><input type="text" id="general-dialog-input" style="display:none"><div class="dialog-buttons"><button class="btn-base btn-cancel" style="display:none" id="general-cancel">取消</button><button class="btn-base btn-confirm" id="general-confirm">确定</button></div></div></div>
     <div id="loading-mask" class="dialog-overlay" style="z-index:3000"><div class="dialog-box"><div class="spinner"></div><p id="loading-text" style="color:var(--text-color)">正在进入设置模式...</p></div></div>
+    <div class="dialog-overlay" id="engine-manager-dialog"><div class="dialog-box" style="width:480px;max-width:90%"><h3 class="dialog-title">管理搜索引擎</h3><div id="engine-manager-list" class="engine-manager-list"></div><div style="display:flex;gap:8px;margin-bottom:15px"><input type="text" id="new-eng-name" placeholder="名称" style="flex:1;margin-bottom:0"><input type="text" id="new-eng-url" placeholder="搜索URL (用 {q} 代替关键词)" style="flex:2;margin-bottom:0"><button class="btn-base btn-confirm" onclick="addCustomEngine()" style="padding:8px 12px;min-width:auto;flex-shrink:0">添加</button></div><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('engine-manager-dialog')">关闭</button></div></div></div>
     <div id="custom-tooltip"></div>
 
     <script>
@@ -248,11 +262,22 @@ const HTML_CONTENT = `
     function customPrompt(title, val='') { return new Promise(resolve => { el('general-dialog-title').textContent = title; el('general-dialog-content').textContent = ''; const inp = el('general-dialog-input'); inp.style.display = 'block'; inp.value = val; inp.focus(); el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = '取消'; showDialog('general-dialog'); setTimeout(()=>inp.focus(), 100); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = () => { hideDialog('general-dialog'); resolve(inp.value.trim()); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve(null); }; inp.onkeypress = (e) => { if(e.key==='Enter') nOk.click(); }; }); }
 
     const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
-    const searchEngines = { baidu: "https://www.baidu.com/s?wd=", bing: "https://www.bing.com/search?q=", google: "https://www.google.com/search?q=", duckduckgo: "https://duckduckgo.com/?q=" };
+    const defaultEngines = [
+        { id: 'baidu', name: '百度', url: 'https://www.baidu.com/s?wd={q}', builtIn: true },
+        { id: 'bing', name: '必应', url: 'https://www.bing.com/search?q={q}', builtIn: true },
+        { id: 'google', name: '谷歌', url: 'https://www.google.com/search?q={q}', builtIn: true },
+        { id: 'duckduckgo', name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q={q}', builtIn: true }
+    ];
+    function getSearchEngines() { const custom = JSON.parse(localStorage.getItem('customEngines')||'[]'); const overrides = custom.filter(c=>c.isOverride); const pureCustom = custom.filter(c=>!c.isOverride); const engines = defaultEngines.map(e => { const ov = overrides.find(o=>o.id===e.id); return ov ? {...e, name: ov.name} : e; }); return [...engines, ...pureCustom]; }
+    function getEngineUrl(id) { const eng = getSearchEngines().find(e=>e.id===id); return eng ? eng.url : defaultEngines[0].url; }
+    function renderEngineOptions() { const sel = el('search-engine-select'); sel.innerHTML=''; getSearchEngines().forEach(e => { const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; sel.appendChild(o); }); sel.value = state.engine; }
 
     async function api(url, method='GET', body=null) { const opts = { method, headers: {'Content-Type': 'application/json'} }; if(state.token) opts.headers['Authorization'] = state.token; if(body) opts.body = JSON.stringify(body); try { const res = await fetch(url, opts); if(res.status === 401) { resetLogin(); customAlert('登录已过期，请重新登录'); return { error: 'auth' }; } if(!res.ok) return { error: 'Status '+res.status }; return await res.json(); } catch(e) { return { error: e.message }; } }
 
-    el('search-engine-select').value = state.engine; el('search-engine-select').onchange = e => { state.engine = e.target.value; localStorage.setItem('se', state.engine); }; el('search-button').onclick = () => { const q = el('search-input').value; if(q) window.open(searchEngines[state.engine] + encodeURIComponent(q), '_blank'); }; el('search-input').onkeypress = e => { if(e.key==='Enter') el('search-button').click(); };
+    renderEngineOptions();
+    el('search-engine-select').onchange = e => { state.engine = e.target.value; localStorage.setItem('se', state.engine); };
+    el('search-button').onclick = () => { const q = el('search-input').value; if(q) window.open(getEngineUrl(state.engine).replace('{q}', encodeURIComponent(q)), '_blank'); };
+    el('search-input').onkeypress = e => { if(e.key==='Enter') el('search-button').click(); };
 
     // --- 一言/古诗词逻辑重写 (支持服务端注入) ---
     function fetchHitokoto() {
@@ -285,6 +310,76 @@ const HTML_CONTENT = `
     }
 
     function updateFavicon(theme) { }
+
+    // --- 搜索引擎管理 ---
+    function showEngineManager() {
+        const list = el('engine-manager-list');
+        const engines = getSearchEngines();
+        list.innerHTML = '';
+        engines.forEach(e => {
+            const item = document.createElement('div');
+            item.className = 'engine-manager-item';
+            const urlDisplay = e.url.replace('{q}', '关键词');
+            item.innerHTML = '<span class="engine-name">' + e.name + '</span>' +
+                '<span class="engine-url" title="' + urlDisplay + '">' + urlDisplay + '</span>' +
+                '<div class="engine-actions">' +
+                '<button class="btn-edit-eng" title="编辑" onclick="editCustomEngine(\'' + e.id + '\')"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
+                '<button class="btn-del-eng" title="删除"' + (e.builtIn ? ' disabled' : '') + ' onclick="deleteCustomEngine(\'' + e.id + '\')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
+                '</div>';
+            list.appendChild(item);
+        });
+        showDialog('engine-manager-dialog');
+    }
+    function addCustomEngine() {
+        const name = el('new-eng-name').value.trim();
+        const url = el('new-eng-url').value.trim();
+        if (!name || !url) return customAlert('请填写名称和URL');
+        if (!url.includes('{q}')) return customAlert('URL中必须包含 {q} 占位符');
+        const custom = JSON.parse(localStorage.getItem('customEngines') || '[]');
+        const id = 'custom_' + Date.now();
+        custom.push({ id, name, url, builtIn: false });
+        localStorage.setItem('customEngines', JSON.stringify(custom));
+        el('new-eng-name').value = '';
+        el('new-eng-url').value = '';
+        renderEngineOptions();
+        showEngineManager();
+    }
+    async function editCustomEngine(id) {
+        const engines = getSearchEngines();
+        const eng = engines.find(e => e.id === id);
+        if (!eng) return;
+        const newName = await customPrompt('编辑引擎名称', eng.name);
+        if (newName === null) return;
+        const newUrl = await customPrompt('编辑搜索URL (用 {q} 代替关键词)', eng.url);
+        if (newUrl === null) return;
+        if (!newName.trim() || !newUrl.trim()) return customAlert('名称和URL不能为空');
+        if (!newUrl.includes('{q}')) return customAlert('URL中必须包含 {q} 占位符');
+        if (eng.builtIn) {
+            // 内置引擎不允许修改URL，只允许改名
+            const custom = JSON.parse(localStorage.getItem('customEngines') || '[]');
+            // 用覆盖的方式：把内置引擎的修改存为自定义引擎（高优先级）
+            const override = custom.find(c => c.id === id);
+            if (override) { override.name = newName.trim(); }
+            else { custom.push({ id, name: newName.trim(), url: eng.url, builtIn: false, isOverride: true }); }
+            localStorage.setItem('customEngines', JSON.stringify(custom));
+        } else {
+            const custom = JSON.parse(localStorage.getItem('customEngines') || '[]');
+            const item = custom.find(c => c.id === id);
+            if (item) { item.name = newName.trim(); item.url = newUrl.trim(); }
+            localStorage.setItem('customEngines', JSON.stringify(custom));
+        }
+        renderEngineOptions();
+        showEngineManager();
+    }
+    async function deleteCustomEngine(id) {
+        if (!await customConfirm('确定删除此搜索引擎？')) return;
+        let custom = JSON.parse(localStorage.getItem('customEngines') || '[]');
+        custom = custom.filter(c => c.id !== id);
+        localStorage.setItem('customEngines', JSON.stringify(custom));
+        if (state.engine === id) { state.engine = 'baidu'; localStorage.setItem('se', state.engine); }
+        renderEngineOptions();
+        showEngineManager();
+    }
 
     // 辅助：Base64 解码 (处理 UTF-8 字符)
     function decodeBase64(str) {
@@ -460,19 +555,28 @@ const HTML_CONTENT = `
         const icon = document.createElement('img');
         icon.className = 'card-icon';
         
-        // 核心逻辑：优先使用用户提供的 icon（支持 Base64 和 HTTP），否则使用 faviconextractor
-        icon.src = (!link.icon || typeof link.icon !== 'string' || !link.icon.trim() || !isValidUrl(link.icon)) ?
-            'https://www.faviconextractor.com/favicon/' + extractDomain(link.url) :
-            link.icon;
+        // 图标多源 fallback: 用户自定义 → faviconextractor → Google favicon → 默认图标
+        const hasCustomIcon = link.icon && typeof link.icon === 'string' && link.icon.trim() && isValidUrl(link.icon);
+        const domain = extractDomain(link.url);
+        icon.src = hasCustomIcon ? link.icon : 'https://www.faviconextractor.com/favicon/' + domain;
         
         icon.alt = link.name;
         icon.loading = "lazy";
         icon.referrerPolicy = "no-referrer";
         
-        // 优化：图标加载失败使用 Base64 常量，移除 Blob
+        // 图标加载失败 fallback 链
         icon.onerror = function() {
-            this.src = DEFAULT_ICON_BASE64;
-            this.onerror = null; // 防止死循环
+            if (this.dataset.fallbackStep === undefined) this.dataset.fallbackStep = '0';
+            const step = parseInt(this.dataset.fallbackStep);
+            if (step === 0 && !hasCustomIcon) {
+                // 已经是 faviconextractor，尝试 Google favicon
+                this.src = 'https://www.google.com/s2/favicons?domain=' + domain + '&sz=32';
+                this.dataset.fallbackStep = '1';
+            } else {
+                // 最终 fallback
+                this.src = DEFAULT_ICON_BASE64;
+                this.onerror = null;
+            }
         };
 
         const title = document.createElement('div');
@@ -627,8 +731,20 @@ const HTML_CONTENT = `
         el('tips-input').value = l.tips||''; 
         el('icon-input').value = l.icon||''; 
         el('category-select').value = l.category || Object.keys(state.categories)[0]; 
-        el('private-checkbox').checked = l.isPrivate||false; 
+        el('private-checkbox').checked = l.isPrivate||false;
+        updateIconPreview();
         showDialog('link-dialog'); 
+    }
+    function updateIconPreview() {
+        const iconVal = el('icon-input').value.trim();
+        const preview = el('icon-preview');
+        if (iconVal && isValidUrl(iconVal)) {
+            preview.src = iconVal;
+            preview.style.display = 'inline-block';
+            preview.onerror = function() { this.style.display = 'none'; this.onerror = null; };
+        } else {
+            preview.style.display = 'none';
+        }
     }
 
     // 修复：原地更新链接数据，防止位置跳变
@@ -732,7 +848,7 @@ const HTML_CONTENT = `
                 if(!n.value) n.value = finalTitle;
                 
                 // 优化：直接填充图标，不生成候选
-                if(r.icon) i.value = r.icon;
+                if(r.icon) { i.value = r.icon; updateIconPreview(); }
 
             } finally {
                 n.placeholder = originalPlaceholder;
