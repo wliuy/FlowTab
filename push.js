@@ -13,7 +13,7 @@ const CONFIG = {
   // 核心：已更新为 FlowTab 的仓库地址
   remoteUrl: 'https://github.com/wliuy/FlowTab.git', 
   branch: 'main', 
-  commitMsg: 'fix: 恢复onblur自动填充，编辑链接时分割标题不被覆盖' // 你可以根据需要修改这次的提交文案
+  commitMsg: 'fix: autoFillTitle记录调用前name值，避免覆盖已分割的标题' // 你可以根据需要修改这次的提交文案
 };
 
 function run(command) {

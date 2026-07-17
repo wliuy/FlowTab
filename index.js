@@ -765,8 +765,11 @@ const HTML_CONTENT = `
     async function autoFillTitle() {
         let u = el('url-input').value.trim();
         const n = el('name-input');
-        const i = el('icon-input'); 
-        
+        const i = el('icon-input');
+
+        // 记录调用前的 name 值，用于判断是否已被 showLinkDialog 分割
+        const nameBeforeApi = n.value;
+
         if(!u) return;
         if(!new RegExp('^https?://', 'i').test(u)) u = 'https://' + u;
 
@@ -777,7 +780,7 @@ const HTML_CONTENT = `
                 n.placeholder='正在获取标题...';
                 if(confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.6'; }
             }
-            
+
             try {
                 const r = await api('/api/getTitle?url='+encodeURIComponent(u) + '&t=' + Date.now());
                 let finalTitle = r.title;
@@ -787,19 +790,20 @@ const HTML_CONTENT = `
                     try { finalTitle = new URL(u).hostname; } catch(e) { finalTitle = '新链接'; }
                 }
 
-                // 智能分割标题：提取第一个标点符号前的部分作为名称，后面的放到备注
+                // 智能分割标题
                 if(finalTitle) {
                     var parts = splitTitle(finalTitle);
-                    // 名称为空或等于完整标题时，自动填充分割后的名称
-                    if(!n.value || n.value === finalTitle) {
+                    // 只有当 name 为空、等于完整标题、或等于分割前的值时才覆盖
+                    // 如果 name 已经被 showLinkDialog 分割过（不等于完整标题也不等于原始值），就不覆盖
+                    if(!nameBeforeApi || nameBeforeApi === '' || nameBeforeApi === finalTitle) {
                         n.value = parts.name;
                     }
                     if (parts.tips && !el('tips-input').value.trim()) {
                         el('tips-input').value = parts.tips;
                     }
                 }
-                
-                // 优化：直接填充图标，不生成候选
+
+                // 直接填充图标
                 if(r.icon) { i.value = r.icon; updateIconPreview(); }
 
             } finally {
