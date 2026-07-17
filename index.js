@@ -638,43 +638,19 @@ const HTML_CONTENT = `
     
     function updateUI() { const loginBtn = el('login-btn'); const adminBtn = el('admin-btn'); if (state.isLoggedIn) { loginBtn.textContent = '退出登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'inline-block'; adminBtn.textContent = state.isAdmin ? '离开设置' : '设置'; } else { loginBtn.textContent = '登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'none'; } document.querySelector('.add-remove-controls').style.display = state.isAdmin ? 'flex' : 'none'; if(state.isAdmin) document.body.classList.add('admin-mode'); else document.body.classList.remove('admin-mode'); const s = el('category-select'); if(s) { s.innerHTML=''; Object.keys(state.categories).forEach(k=>s.add(new Option(k,k))); } setTimeout(adjustOffset, 50); }
     
-    // 通用标题分割函数：将 "名称 - 描述" 格式拆分为 {name, tips}
-    function splitTitle(fullTitle) {
-        if (!fullTitle) return { name: fullTitle, tips: '' };
-        var sepMatch = fullTitle.match(/\s*[|｜_\-—–:：,，]\s*/);
-        if (sepMatch && sepMatch.index > 0) {
-            return {
-                name: fullTitle.substring(0, sepMatch.index).trim(),
-                tips: fullTitle.substring(sepMatch.index + sepMatch[0].length).trim()
-            };
-        }
-        return { name: fullTitle, tips: '' };
-    }
-
     // 修复：showLinkDialog 清空候选图标
     function showLinkDialog(url=null) {
         el('link-dialog-title').textContent = url ? '编辑链接' : '添加链接';
         el('link-old-url').value = url || '';
         const l = url ? state.links.find(i=>i.url===url) : {};
-        // 打开对话框时自动分割标题
-        if (l.name) {
-            var parts = splitTitle(l.name);
-            el('name-input').value = parts.name;
-            el('tips-input').value = l.tips || parts.tips;
-        } else {
-            el('name-input').value = '';
-            el('tips-input').value = l.tips || '';
-        }
+        el('name-input').value = l.name||'';
         el('url-input').value = l.url||'';
+        el('tips-input').value = l.tips||'';
         el('icon-input').value = l.icon||'';
         el('category-select').value = l.category || Object.keys(state.categories)[0];
         el('private-checkbox').checked = l.isPrivate||false;
         updateIconPreview();
         showDialog('link-dialog');
-        // 新链接：自动获取标题和图标
-        if (!url && l.url) {
-            autoFillTitle();
-        }
     }
     function updateIconPreview() {
         const iconVal = el('icon-input').value.trim();
@@ -767,9 +743,6 @@ const HTML_CONTENT = `
         const n = el('name-input');
         const i = el('icon-input');
 
-        // 记录调用前的 name 值，用于判断是否已被 showLinkDialog 分割
-        const nameBeforeApi = n.value;
-
         if(!u) return;
         if(!new RegExp('^https?://', 'i').test(u)) u = 'https://' + u;
 
@@ -790,18 +763,7 @@ const HTML_CONTENT = `
                     try { finalTitle = new URL(u).hostname; } catch(e) { finalTitle = '新链接'; }
                 }
 
-                // 智能分割标题
-                if(finalTitle) {
-                    var parts = splitTitle(finalTitle);
-                    // 只有当 name 为空、等于完整标题、或等于分割前的值时才覆盖
-                    // 如果 name 已经被 showLinkDialog 分割过（不等于完整标题也不等于原始值），就不覆盖
-                    if(!nameBeforeApi || nameBeforeApi === '' || nameBeforeApi === finalTitle) {
-                        n.value = parts.name;
-                    }
-                    if (parts.tips && !el('tips-input').value.trim()) {
-                        el('tips-input').value = parts.tips;
-                    }
-                }
+                if(!n.value) n.value = finalTitle;
 
                 // 直接填充图标
                 if(r.icon) { i.value = r.icon; updateIconPreview(); }
@@ -970,11 +932,8 @@ export default {
 
             return new Response(HTML_CONTENT.replace('<!--INJECT_DATA-->', inject), {
                 headers: {
-                    'Content-Type': 'text/html; charset=utf-8',
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0',
-                    'X-Accel-Expires': '0'
+                    'Content-Type': 'text/html',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate'
                 }
             });
         }

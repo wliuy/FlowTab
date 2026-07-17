@@ -13,7 +13,7 @@ const CONFIG = {
   // 核心：已更新为 FlowTab 的仓库地址
   remoteUrl: 'https://github.com/wliuy/FlowTab.git', 
   branch: 'main', 
-  commitMsg: 'fix: autoFillTitle记录调用前name值，避免覆盖已分割的标题' // 你可以根据需要修改这次的提交文案
+  commitMsg: 'revert: 回退标题分割功能，保留图标多源fallback和预览' // 你可以根据需要修改这次的提交文案
 };
 
 function run(command) {
