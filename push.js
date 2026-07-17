@@ -13,7 +13,7 @@ const CONFIG = {
   // 核心：已更新为 FlowTab 的仓库地址
   remoteUrl: 'https://github.com/wliuy/FlowTab.git', 
   branch: 'main', 
-  commitMsg: 'fix: 标题分割改为打开对话框时立即执行，不依赖blur事件' // 你可以根据需要修改这次的提交文案
+  commitMsg: 'fix: 移除onblur，所有标题逻辑统一在showLinkDialog中处理' // 你可以根据需要修改这次的提交文案
 };
 
 function run(command) {

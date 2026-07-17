@@ -222,7 +222,7 @@ const HTML_CONTENT = `
     </div>
 
     <!-- 弹窗 -->
-    <div class="dialog-overlay" id="link-dialog"><div class="dialog-box"><h3 class="dialog-title" id="link-dialog-title">添加链接</h3><input type="hidden" id="link-old-url"><label>名称 (必填)</label><input type="text" id="name-input" placeholder="名称"><label>URL (必填)</label><input type="text" id="url-input" placeholder="https://..." onblur="autoFillTitle()"><label>描述 (可选)</label><input type="text" id="tips-input" placeholder="描述"><label>图标 URL (可选) <img id="icon-preview" class="icon-preview" style="display:none"></label><input type="text" id="icon-input" placeholder="图标地址" oninput="updateIconPreview()"><div id="icon-candidates" style="margin-bottom:15px;display:flex;gap:10px;min-height:0;"></div><label>分类</label><select id="category-select"></select><div style="margin-top:10px;display:flex;align-items:center"><input type="checkbox" id="private-checkbox" style="width:auto;margin:0 10px 0 0"><span style="font-size:14px;color:var(--text-color)">设为私密链接</span></div><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('link-dialog')">取消</button><button class="btn-base btn-confirm" id="link-confirm-btn" onclick="saveLinkFromDialog()">确定</button></div></div></div>
+    <div class="dialog-overlay" id="link-dialog"><div class="dialog-box"><h3 class="dialog-title" id="link-dialog-title">添加链接</h3><input type="hidden" id="link-old-url"><label>名称 (必填)</label><input type="text" id="name-input" placeholder="名称"><label>URL (必填)</label><input type="text" id="url-input" placeholder="https://..."><label>描述 (可选)</label><input type="text" id="tips-input" placeholder="描述"><label>图标 URL (可选) <img id="icon-preview" class="icon-preview" style="display:none"></label><input type="text" id="icon-input" placeholder="图标地址" oninput="updateIconPreview()"><div id="icon-candidates" style="margin-bottom:15px;display:flex;gap:10px;min-height:0;"></div><label>分类</label><select id="category-select"></select><div style="margin-top:10px;display:flex;align-items:center"><input type="checkbox" id="private-checkbox" style="width:auto;margin:0 10px 0 0"><span style="font-size:14px;color:var(--text-color)">设为私密链接</span></div><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('link-dialog')">取消</button><button class="btn-base btn-confirm" id="link-confirm-btn" onclick="saveLinkFromDialog()">确定</button></div></div></div>
     <div class="dialog-overlay" id="login-modal"><div class="dialog-box" style="width:300px"><h3 class="dialog-title">登录</h3><input type="password" id="login-password" placeholder="请输入密码"><div class="dialog-buttons"><button class="btn-base btn-cancel" onclick="hideDialog('login-modal')">取消</button><button class="btn-base btn-confirm" onclick="performLogin()">确定</button></div></div></div>
     <div class="dialog-overlay" id="backup-modal"><div class="dialog-box" style="width:550px;max-width:90%;padding:0;overflow:hidden"><div style="padding:20px;border-bottom:1px solid var(--border)"><h3 style="margin:0;font-size:18px;color:var(--text-color);text-align:left">历史备份节点列表</h3><p style="margin:5px 0 0;font-size:12px;color:#888">我们为您在云端最多保留10个历史备份节点。</p></div><div style="padding:20px"><div class="backup-header-info"><span id="last-backup-time" style="font-size:13px;color:var(--text-color)">加载中...</span><button class="btn-base btn-confirm" onclick="handleManualBackup()" style="padding:6px 15px;min-width:auto">🚀 立即备份</button></div><h4 style="margin:0 0 10px;font-size:14px;color:var(--text-color)">云端历史备份节点</h4><div id="backup-list-container" class="backup-list-wrapper"></div></div><div style="padding:15px 20px;background-color:var(--input-bg);text-align:right;border-top:1px solid var(--border)"><button class="btn-base btn-cancel" onclick="hideDialog('backup-modal')">关闭</button></div></div></div>
     <div class="dialog-overlay" id="general-dialog"><div class="dialog-box"><h3 class="dialog-title" id="general-dialog-title">提示</h3><div id="general-dialog-content" style="margin-bottom:20px;text-align:center;color:var(--text-color);line-height:1.5"></div><input type="text" id="general-dialog-input" style="display:none"><div class="dialog-buttons"><button class="btn-base btn-cancel" style="display:none" id="general-cancel">取消</button><button class="btn-base btn-confirm" id="general-confirm">确定</button></div></div></div>
@@ -656,11 +656,9 @@ const HTML_CONTENT = `
         el('link-dialog-title').textContent = url ? '编辑链接' : '添加链接';
         el('link-old-url').value = url || '';
         const l = url ? state.links.find(i=>i.url===url) : {};
-        console.log('[FlowTab] showLinkDialog url=', url, 'link=', l, 'name=', l.name);
         // 打开对话框时自动分割标题
         if (l.name) {
             var parts = splitTitle(l.name);
-            console.log('[FlowTab] splitResult=', parts);
             el('name-input').value = parts.name;
             el('tips-input').value = l.tips || parts.tips;
         } else {
@@ -669,10 +667,14 @@ const HTML_CONTENT = `
         }
         el('url-input').value = l.url||'';
         el('icon-input').value = l.icon||'';
-        el('category-select').value = l.category || Object.keys(state.categories)[0]; 
+        el('category-select').value = l.category || Object.keys(state.categories)[0];
         el('private-checkbox').checked = l.isPrivate||false;
         updateIconPreview();
-        showDialog('link-dialog'); 
+        showDialog('link-dialog');
+        // 新链接：自动获取标题和图标
+        if (!url && l.url) {
+            autoFillTitle();
+        }
     }
     function updateIconPreview() {
         const iconVal = el('icon-input').value.trim();
