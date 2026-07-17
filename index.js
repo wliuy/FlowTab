@@ -764,15 +764,19 @@ const HTML_CONTENT = `
                 }
 
                 // 智能分割标题：提取第一个标点符号前的部分作为名称，后面的放到备注
-                if(!n.value && finalTitle) {
+                if(finalTitle) {
                     const sepMatch = finalTitle.match(/\s*[|｜_\-—–:：,，]\s*/);
                     if (sepMatch && sepMatch.index > 0) {
-                        n.value = finalTitle.substring(0, sepMatch.index).trim();
+                        const namePart = finalTitle.substring(0, sepMatch.index).trim();
                         const suffix = finalTitle.substring(sepMatch.index + sepMatch[0].length).trim();
+                        // 名称为空或等于完整标题时，自动填充分割后的名称
+                        if(!n.value || n.value === finalTitle) {
+                            n.value = namePart;
+                        }
                         if (suffix && !el('tips-input').value.trim()) {
                             el('tips-input').value = suffix;
                         }
-                    } else {
+                    } else if(!n.value) {
                         n.value = finalTitle;
                     }
                 }
