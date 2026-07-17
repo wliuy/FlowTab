@@ -656,9 +656,11 @@ const HTML_CONTENT = `
         el('link-dialog-title').textContent = url ? '编辑链接' : '添加链接';
         el('link-old-url').value = url || '';
         const l = url ? state.links.find(i=>i.url===url) : {};
+        console.log('[FlowTab] showLinkDialog url=', url, 'link=', l, 'name=', l.name);
         // 打开对话框时自动分割标题
         if (l.name) {
             var parts = splitTitle(l.name);
+            console.log('[FlowTab] splitResult=', parts);
             el('name-input').value = parts.name;
             el('tips-input').value = l.tips || parts.tips;
         } else {
@@ -962,8 +964,11 @@ export default {
 
             return new Response(HTML_CONTENT.replace('<!--INJECT_DATA-->', inject), {
                 headers: {
-                    'Content-Type': 'text/html',
-                    'Cache-Control': 'no-cache, no-store, must-revalidate'
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    'X-Accel-Expires': '0'
                 }
             });
         }
