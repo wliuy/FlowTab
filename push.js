@@ -13,7 +13,7 @@ const CONFIG = {
   // 核心：已更新为 FlowTab 的仓库地址
   remoteUrl: 'https://github.com/wliuy/FlowTab.git', 
   branch: 'main', 
-  commitMsg: 'chore: 默认图标改为网站首字母Logo，标题智能分割' // 你可以根据需要修改这次的提交文案
+  commitMsg: 'fix: 修复图标fallback导致JS崩溃的问题，增加try-catch保护' // 你可以根据需要修改这次的提交文案
 };
 
 function run(command) {
