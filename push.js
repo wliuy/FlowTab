@@ -13,7 +13,7 @@ const CONFIG = {
   // 核心：已更新为 FlowTab 的仓库地址
   remoteUrl: 'https://github.com/wliuy/FlowTab.git', 
   branch: 'main', 
-  commitMsg: 'chore: 同步纯净 Worker 核心代码并优化图标' // 你可以根据需要修改这次的提交文案
+  commitMsg: 'chore: 移除自定义搜索引擎功能，保留图标自动获取增强' // 你可以根据需要修改这次的提交文案
 };
 
 function run(command) {
