@@ -54,7 +54,12 @@ const HTML_CONTENT = `
         .mini-btn { width: 28px; height: 28px; padding: 0; border-radius: 6px; margin: 0 !important; display: inline-flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; border: none; transition: transform 0.2s; }
         .mini-btn:hover { transform: scale(1.1); }
         .mini-btn svg { width: 16px; height: 16px; stroke: white; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-        .btn-edit { background-color: var(--primary); } .btn-del { background-color: var(--danger); } .btn-move { background-color: #5d7fb9; }
+        .btn-edit { background-color: var(--primary); } .btn-del { background-color: var(--danger); } .btn-move { background-color: #5d7fb9; } .btn-add { background-color: var(--primary); }
+
+        .card-add { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px dashed var(--primary); cursor: pointer; transition: all 0.3s ease; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 60px; color: var(--primary); opacity: 0.6; }
+        .card-add:hover { opacity: 1; transform: translateY(-3px); box-shadow: 0 5px 12px rgba(0,0,0,0.1); }
+        .card-add svg { width: 28px; height: 28px; stroke: var(--primary); stroke-width: 2; fill: none; }
+        .card-add span { font-size: 12px; margin-top: 4px; }
 
         .card-container { display: grid; grid-template-columns: repeat(auto-fill, 170px); gap: 15px; padding: 15px 5px; justify-content: center; }
         /* 优化：增加 user-select: none 防止拖拽时选中文本 */
@@ -137,6 +142,7 @@ const HTML_CONTENT = `
             .content { padding: 10px; padding-bottom: 220px !important; }
             .card-container { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 5px; align-items: stretch; display: grid; }
             .card { width: 100%; height: 100%; margin: 0; box-sizing: border-box; overflow: hidden; }
+            .card-add { width: 100%; min-height: 50px; }
             .search-bar { width: 92%; margin-left: auto; margin-right: auto; }
             .search-bar select { min-width: 0; width: 80px; padding: 8px 0; text-align: center; text-indent: 0; }
             .add-remove-controls { top: auto; transform: none; bottom: 160px; right: 20px; } 
@@ -422,6 +428,7 @@ const HTML_CONTENT = `
                                 '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
                                 '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\\'' + cat + '\\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
                                 '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\\'' + cat + '\\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
+                                '<button class="mini-btn btn-add" title="新增链接" onclick="showLinkDialogForCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>' +
                                 '</div>';
                 }
                 title.innerHTML = '<div class="section-title">' + cat + '</div>' + adminBtns;
@@ -438,6 +445,13 @@ const HTML_CONTENT = `
                     };
                 }
                 links.forEach(l => createCard(l, cardCont));
+                if(state.isEditMode) {
+                    const addCard = document.createElement('div');
+                    addCard.className = 'card-add';
+                    addCard.innerHTML = '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>新增链接</span>';
+                    addCard.onclick = function() { showLinkDialog(); el('category-select').value = cat; };
+                    cardCont.appendChild(addCard);
+                }
                 sec.appendChild(cardCont); c.appendChild(sec);
             }
         });
@@ -763,7 +777,20 @@ const HTML_CONTENT = `
                     try { finalTitle = new URL(u).hostname; } catch(e) { finalTitle = '新链接'; }
                 }
 
-                if(!n.value) n.value = finalTitle;
+                if(!n.value) {
+                    // 拆分标题：第一个空格前为名称，第二个空格后为描述
+                    const firstSpace = finalTitle.indexOf(' ');
+                    if (firstSpace > 0) {
+                        n.value = finalTitle.substring(0, firstSpace);
+                        const secondSpace = finalTitle.indexOf(' ', firstSpace + 1);
+                        const tipsInput = el('tips-input');
+                        if (!tipsInput.value && secondSpace > 0) {
+                            tipsInput.value = finalTitle.substring(secondSpace + 1).trim();
+                        }
+                    } else {
+                        n.value = finalTitle;
+                    }
+                }
 
                 // 直接填充图标
                 if(r.icon) { i.value = r.icon; updateIconPreview(); }
