@@ -857,10 +857,11 @@ const HTML_CONTENT = `
  * 辅助函数：安全比较字符串（防止时序攻击）
  */
 function safeCompare(a, b) {
-    if (a.length !== b.length) return false;
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-        result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    // 修复：长度不同时仍遍历较长字符串的全部长度，避免泄露长度信息
+    const maxLen = Math.max(a.length, b.length);
+    let result = a.length === b.length ? 0 : 1;
+    for (let i = 0; i < maxLen; i++) {
+        result |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
     }
     return result === 0;
 }
@@ -885,18 +886,31 @@ async function auth(req, env, requireAdmin = false) {
     if (!token) return { ok: false, err: '未登录' };
 
     try {
-        const [ts, hash] = token.split('.');
-        // 校验 Token 有效期 (30天)
-        if (Date.now() - parseInt(ts) > 30 * 24 * 3600 * 1000) {
-            return { ok: false, err: 'Token过期' };
-        }
-
-        const data = new TextEncoder().encode(ts + "_" + env.ADMIN_PASSWORD);
-        const digest = await crypto.subtle.digest('SHA-256', data);
-        const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
-
-        if (!safeCompare(hash, expected)) {
-            return { ok: false, err: '无效Token' };
+        const parts = token.split('.');
+        if (parts.length === 3) {
+            // 新格式: timestamp.nonce.hash
+            const [ts, nonce, hash] = parts;
+            if (Date.now() - parseInt(ts) > 30 * 24 * 3600 * 1000) {
+                return { ok: false, err: 'Token过期' };
+            }
+            const data = new TextEncoder().encode(ts + "_" + nonce + "_" + env.ADMIN_PASSWORD);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
+            if (!safeCompare(hash, expected)) {
+                return { ok: false, err: '无效Token' };
+            }
+        } else {
+            // 兼容旧格式: timestamp.hash（无随机数）
+            const [ts, hash] = parts;
+            if (Date.now() - parseInt(ts) > 30 * 24 * 3600 * 1000) {
+                return { ok: false, err: 'Token过期' };
+            }
+            const data = new TextEncoder().encode(ts + "_" + env.ADMIN_PASSWORD);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
+            if (!safeCompare(hash, expected)) {
+                return { ok: false, err: '无效Token' };
+            }
         }
         return { ok: true };
     } catch {
@@ -1073,9 +1087,10 @@ export default {
             if (password !== env.ADMIN_PASSWORD) return jsonRes({ valid: false }, 403);
 
             const ts = Date.now();
-            const data = new TextEncoder().encode(ts + "_" + password);
+            const nonce = crypto.randomUUID();
+            const data = new TextEncoder().encode(ts + "_" + nonce + "_" + password);
             const hash = await crypto.subtle.digest('SHA-256', data);
-            const token = ts + "." + btoa(String.fromCharCode(...new Uint8Array(hash)));
+            const token = ts + "." + nonce + "." + btoa(String.fromCharCode(...new Uint8Array(hash)));
 
             return jsonRes({ valid: true, token });
         }
