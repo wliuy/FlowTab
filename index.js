@@ -121,6 +121,7 @@ const HTML_CONTENT = `
         @keyframes spin { to { transform: rotate(360deg); } }
         #custom-tooltip { position: fixed; display: none; z-index: 3001; background: var(--primary); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); pointer-events: none; line-height: 1.5; max-width: 300px; word-wrap: break-word; }
         #general-dialog { z-index: 2500; }
+        .btn-third { background-color: var(--info); color: white; }
         #loading-mask { z-index: 3000; }
 
         .icon-preview { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-left: 6px; border: 1px solid var(--border); }
@@ -256,6 +257,8 @@ const HTML_CONTENT = `
 
     function customAlert(msg) { el('general-dialog-title').textContent = '提示'; el('general-dialog-content').textContent = msg; el('general-dialog-input').style.display = 'none'; el('general-cancel').style.display = 'none'; el('general-confirm').textContent = '确定'; showDialog('general-dialog'); const btn = el('general-confirm').cloneNode(true); el('general-confirm').parentNode.replaceChild(btn, el('general-confirm')); btn.onclick = () => hideDialog('general-dialog'); }
     function customConfirm(msg, btnOkText='确定', btnCancelText='取消') { return new Promise(resolve => { el('general-dialog-title').textContent = '确认'; el('general-dialog-content').textContent = msg; el('general-dialog-input').style.display = 'none'; el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = btnCancelText; el('general-confirm').textContent = btnOkText; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = () => { hideDialog('general-dialog'); resolve(true); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve(false); }; }); }
+    // 三选项弹窗：返回 'ok' | 'third' | 'cancel'
+    function customConfirm3(msg, btnOkText, btnThirdText, btnCancelText='取消') { return new Promise(resolve => { el('general-dialog-title').textContent = '确认'; el('general-dialog-content').textContent = msg; el('general-dialog-input').style.display = 'none'; el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = btnCancelText; el('general-confirm').textContent = btnOkText; let thirdBtn = el('general-dialog').querySelector('.btn-third'); if (!thirdBtn) { thirdBtn = document.createElement('button'); thirdBtn.className = 'btn-base btn-third'; thirdBtn.style.display = 'inline-block'; el('general-confirm').parentNode.insertBefore(thirdBtn, el('general-cancel')); } thirdBtn.textContent = btnThirdText; thirdBtn.style.display = 'inline-block'; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true), nThird = thirdBtn.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); thirdBtn.parentNode.replaceChild(nThird, thirdBtn); nOk.onclick = () => { hideDialog('general-dialog'); resolve('ok'); }; nThird.onclick = () => { hideDialog('general-dialog'); resolve('third'); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve('cancel'); }; }); }
     function customPrompt(title, val='') { return new Promise(resolve => { el('general-dialog-title').textContent = title; el('general-dialog-content').textContent = ''; const inp = el('general-dialog-input'); inp.style.display = 'block'; inp.value = val; inp.focus(); el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = '取消'; showDialog('general-dialog'); setTimeout(()=>inp.focus(), 100); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = () => { hideDialog('general-dialog'); resolve(inp.value.trim()); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve(null); }; inp.onkeypress = (e) => { if(e.key==='Enter') nOk.click(); }; }); }
 
     const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
@@ -763,8 +766,31 @@ const HTML_CONTENT = `
             // 新增模式：查重后追加
             const dup = state.links.find(l => l.url === n.url);
             if (dup) {
-                const confirmed = await customConfirm('该链接已存在于「' + dup.category + '」分类下，是否仍要添加？', '仍要添加', '取消');
-                if (!confirmed) return;
+                const choice = await customConfirm3('该链接已存在于「' + dup.category + '」分类下', '仍要添加', '跳转定位', '取消');
+                if (choice === 'cancel') return;
+                if (choice === 'third') {
+                    hideDialog('link-dialog');
+                    setTimeout(() => {
+                        const section = el(dup.category);
+                        if (section) {
+                            document.querySelectorAll('.category-button').forEach(b => b.classList.remove('active'));
+                            const btn = [...document.querySelectorAll('.category-button')].find(b => b.textContent === dup.category);
+                            if (btn) btn.classList.add('active');
+                            const headerHeight = document.querySelector('.fixed-elements').offsetHeight;
+                            window.scrollTo({ top: section.offsetTop - headerHeight - 15, behavior: 'smooth' });
+                            // 高亮目标卡片
+                            const targetCard = [...document.querySelectorAll('.card')].find(c => c.dataset.url === dup.url);
+                            if (targetCard) {
+                                targetCard.style.transition = 'box-shadow 0.3s, transform 0.3s';
+                                targetCard.style.boxShadow = '0 0 0 3px var(--danger), 0 8px 20px rgba(231,76,60,0.3)';
+                                targetCard.style.transform = 'scale(1.05)';
+                                setTimeout(() => { targetCard.style.boxShadow = ''; targetCard.style.transform = ''; }, 2000);
+                            }
+                        }
+                    }, 100);
+                    return;
+                }
+                // choice === 'ok' → 仍要添加，继续往下执行
             }
             state.links.push(n);
         }
