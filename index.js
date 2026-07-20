@@ -244,6 +244,8 @@ const HTML_CONTENT = `
 
     function el(id) { return document.getElementById(id); }
     function showDialog(id) { const d = el(id); if(d) { d.style.display = 'flex'; const i = d.querySelectorAll('input'); if(i.length) setTimeout(()=>i[0].focus(),100); } }
+    // 安全：转义 HTML 属性中的特殊字符，防止 onclick 注入
+    function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     function hideDialog(id) { const d = el(id); if(d) d.style.display = 'none'; }
     function showLoading(text='加载中...') { el('loading-text').innerText=text; showDialog('loading-mask'); }
     function hideLoading() { hideDialog('loading-mask'); }
@@ -422,15 +424,16 @@ const HTML_CONTENT = `
                 const title = document.createElement('div'); title.className = 'section-title-container';
                 let adminBtns = '';
                 if(state.isEditMode) {
+                    const ec = escAttr(cat);
                     adminBtns = '<div class="section-controls">' +
-                                '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
-                                '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
-                                '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\\'' + cat + '\\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
-                                '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\\'' + cat + '\\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
-                                '<button class="mini-btn btn-add" title="新增链接" onclick="showLinkDialogForCategory(\\\'' + cat + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>' +
+                                '<button class="mini-btn btn-edit" title="重命名" onclick="editCategory(\\\'' + ec + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>' +
+                                '<button class="mini-btn btn-del" title="删除" onclick="delCategory(\\\'' + ec + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>' +
+                                '<button class="mini-btn btn-move" title="上移" onclick="moveCategory(\\\'' + ec + '\\\',-1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬆</button>' +
+                                '<button class="mini-btn btn-move" title="下移" onclick="moveCategory(\\\'' + ec + '\\\',1)" style="font-size:16px; font-weight:bold; background-color: #5d7fb9;">⬇</button>' +
+                                '<button class="mini-btn btn-add" title="新增链接" onclick="showLinkDialogForCategory(\\\'' + ec + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>' +
                                 '</div>';
                 }
-                title.innerHTML = '<div class="section-title">' + cat + '</div>' + adminBtns;
+                title.innerHTML = '<div class="section-title">' + escAttr(cat) + '</div>' + adminBtns;
                 sec.appendChild(title);
                 const cardCont = document.createElement('div'); cardCont.className = 'card-container'; cardCont.id = 'c_'+cat;
                 // 优化：容器接收拖放，用于处理放置到空白区域的情况
@@ -564,7 +567,8 @@ const HTML_CONTENT = `
         
         const overlay = document.createElement('div'); overlay.className = 'card-click-overlay';
         // 调整：移除按钮的 onmousedown="event.stopPropagation()"，允许拖拽按钮区域进行移动
-        overlay.innerHTML = '<div class="overlay-half left"><div class="action-btn-square btn-edit-card" onclick="event.stopPropagation();showLinkDialog(\\\'' + link.url + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right"><div class="action-btn-square btn-del-card" onclick="event.stopPropagation();removeCard(\\\'' + link.url + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
+        const eu = escAttr(link.url);
+        overlay.innerHTML = '<div class="overlay-half left"><div class="action-btn-square btn-edit-card" onclick="event.stopPropagation();showLinkDialog(\\\'' + eu + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right"><div class="action-btn-square btn-del-card" onclick="event.stopPropagation();removeCard(\\\'' + eu + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
         card.appendChild(overlay);
         
         if(!state.isAdmin) { 
