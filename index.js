@@ -346,11 +346,11 @@ const HTML_CONTENT = `
                     state.categories = cached.categories;
                     const allLinks = cached.links;
                     fixCategories(allLinks, state.categories);
-                    state.publicLinks = allLinks.filter(l=>!l.isPrivate);
-                    state.privateLinks = allLinks.filter(l=>l.isPrivate);
-                    state.links = state.isLoggedIn ? [...state.publicLinks, ...state.privateLinks] : state.publicLinks;
+                    state.links = allLinks;
+                    syncDerived();
+                    if (!state.isLoggedIn) state.links = state.publicLinks;
                     renderSections(); updateUI(); updateCategoryButtons();
-                    setTimeout(adjustOffset, 100); setTimeout(updateActiveCategory, 100);
+                    scheduleLayout();
                 }
             } catch(e) {}
         }
@@ -362,17 +362,17 @@ const HTML_CONTENT = `
                 try {
                     const res = JSON.parse(jsonStr);
                     if (res.categories) state.categories = res.categories;
-                    state.publicLinks = res.links || [];
-                    
+                    state.links = res.links || [];
+
                     // 执行数据自愈
-                    fixCategories(state.publicLinks, state.categories);
-                    
-                    state.links = state.publicLinks;
-                    renderSections(); updateUI(); updateCategoryButtons(); 
+                    fixCategories(state.links, state.categories);
+
+                    syncDerived();
+                    renderSections(); updateUI(); updateCategoryButtons();
                     // 同步到本地缓存 (仅公开数据)
                     localStorage.setItem(cacheKey, JSON.stringify({links: state.publicLinks, categories: state.categories}));
-                    setTimeout(adjustOffset, 100); setTimeout(updateActiveCategory, 100);
-                    return; 
+                    scheduleLayout();
+                    return;
                 } catch(e) {}
             }
         }
@@ -399,9 +399,8 @@ const HTML_CONTENT = `
         }
 
         if (res.categories) state.categories = res.categories;
-        state.publicLinks = allLinks.filter(l=>!l.isPrivate); 
-        state.privateLinks = allLinks.filter(l=>l.isPrivate); 
-        state.links = nextLinks; 
+        state.links = nextLinks;
+        syncDerived();
         
         localStorage.setItem(cacheKey, JSON.stringify({links: allLinks, categories: state.categories}));
         
@@ -410,8 +409,8 @@ const HTML_CONTENT = `
         if (container.style.opacity === '0') {
             container.style.opacity = '1';
         }
-        
-        setTimeout(adjustOffset, 100); setTimeout(updateActiveCategory, 100); 
+
+        scheduleLayout();
     }
 
     function renderSections() {
@@ -457,6 +456,24 @@ const HTML_CONTENT = `
         });
     }
 
+    // 性能优化：缓存成功的图标URL，避免重复网络请求
+    const iconCache = JSON.parse(localStorage.getItem('flowtab_icon_cache') || '{}');
+    function saveIconCache() { localStorage.setItem('flowtab_icon_cache', JSON.stringify(iconCache)); }
+    // 性能优化：批量更新分类派生数组
+    function syncDerived() {
+        state.publicLinks = state.links.filter(l=>!l.isPrivate);
+        state.privateLinks = state.links.filter(l=>l.isPrivate);
+    }
+    // 性能优化：合并多次布局调整为一次 rAF
+    let adjustRaf = null;
+    function scheduleLayout() {
+        if (adjustRaf) return;
+        adjustRaf = requestAnimationFrame(() => {
+            adjustRaf = null;
+            adjustOffset();
+            updateActiveCategory();
+        });
+    }
     // 拖拽相关变量
     let draggedCard = null;
 
@@ -476,10 +493,16 @@ const HTML_CONTENT = `
         const icon = document.createElement('img');
         icon.className = 'card-icon';
         
-        // 图标多源 fallback: 用户自定义 → faviconextractor → Google favicon → 网站首字母Logo
+        // 图标多源 fallback: 用户自定义 → 缓存 → faviconextractor → Google favicon → 首字母Logo
         const hasCustomIcon = link.icon && typeof link.icon === 'string' && link.icon.trim() && isValidUrl(link.icon);
         const domain = extractDomain(link.url);
-        icon.src = hasCustomIcon ? link.icon : 'https://www.faviconextractor.com/favicon/' + domain;
+        const cacheKey = domain;
+
+        if (!hasCustomIcon && iconCache[cacheKey]) {
+            icon.src = iconCache[cacheKey];
+        } else {
+            icon.src = hasCustomIcon ? link.icon : 'https://www.faviconextractor.com/favicon/' + domain;
+        }
 
         icon.alt = link.name;
         icon.loading = "lazy";
@@ -507,6 +530,14 @@ const HTML_CONTENT = `
                     this.src = DEFAULT_ICON_BASE64;
                 }
                 this.onerror = null;
+            }
+        };
+
+        // 缓存成功的图标URL
+        icon.onload = function() {
+            if (!hasCustomIcon && this.src && !this.src.startsWith('data:') && this.src !== iconCache[cacheKey]) {
+                iconCache[cacheKey] = this.src;
+                saveIconCache();
             }
         };
 
@@ -609,8 +640,7 @@ const HTML_CONTENT = `
         
         if(newLinks.length > 0) {
             state.links = newLinks;
-            state.publicLinks = state.links.filter(l=>!l.isPrivate);
-            state.privateLinks = state.links.filter(l=>l.isPrivate);
+            syncDerived();
             // saveData(); // 移除自动保存，改为退出时统一保存
         }
     }
@@ -643,16 +673,20 @@ const HTML_CONTENT = `
             };
             c.appendChild(btn);
         });
-        setTimeout(adjustOffset, 50);
+        scheduleLayout();
     }
 
     async function handleAdminBtnClick() { if (state.isAdmin) { el('general-dialog-title').textContent = '提示'; el('general-dialog-content').textContent = '是否要保存您在设置模式中所做的修改？'; el('general-dialog-input').style.display='none'; el('general-cancel').style.display='inline-block'; el('general-cancel').textContent='不保存'; el('general-confirm').textContent='保存'; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = async () => { hideDialog('general-dialog'); await saveData(); state.isAdmin = false; state.isEditMode = false; updateUI(); renderSections(); customAlert('设置已保存'); }; nCancel.onclick = () => { hideDialog('general-dialog'); state.isAdmin = false; state.isEditMode = false; updateUI(); loadLinks(); customAlert('已放弃修改'); }; } else { if(!await validateToken()) return; showLoading('正在进入设置模式...'); try { 
         // 优化：使用常量 USER ID
         await api('/api/backupData', 'POST', {sourceUserId: CURRENT_USER_ID}); } catch(e){} hideLoading(); state.isAdmin = true; state.isEditMode = true; updateUI(); renderSections(); updateCategoryButtons(); } }
     
-    function updateUI() { const loginBtn = el('login-btn'); const adminBtn = el('admin-btn'); if (state.isLoggedIn) { loginBtn.textContent = '退出登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'inline-block'; adminBtn.textContent = state.isAdmin ? '离开设置' : '设置'; } else { loginBtn.textContent = '登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'none'; } document.querySelector('.add-remove-controls').style.display = state.isAdmin ? 'flex' : 'none'; if(state.isAdmin) document.body.classList.add('admin-mode'); else document.body.classList.remove('admin-mode'); const s = el('category-select'); if(s) { s.innerHTML=''; Object.keys(state.categories).forEach(k=>s.add(new Option(k,k))); } setTimeout(adjustOffset, 50); }
+    function updateUI() { const loginBtn = el('login-btn'); const adminBtn = el('admin-btn'); if (state.isLoggedIn) { loginBtn.textContent = '退出登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'inline-block'; adminBtn.textContent = state.isAdmin ? '离开设置' : '设置'; } else { loginBtn.textContent = '登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'none'; } document.querySelector('.add-remove-controls').style.display = state.isAdmin ? 'flex' : 'none'; if(state.isAdmin) document.body.classList.add('admin-mode'); else document.body.classList.remove('admin-mode'); const s = el('category-select'); if(s) { s.innerHTML=''; Object.keys(state.categories).forEach(k=>s.add(new Option(k,k))); } scheduleLayout(); }
     
     // 修复：showLinkDialog 清空候选图标
+    function showLinkDialogForCategory(cat) {
+        showLinkDialog();
+        el('category-select').value = cat;
+    }
     function showLinkDialog(url=null) {
         el('link-dialog-title').textContent = url ? '编辑链接' : '添加链接';
         el('link-old-url').value = url || '';
@@ -714,17 +748,16 @@ const HTML_CONTENT = `
         if(!state.categories[n.category]) state.categories[n.category]=[]; 
         
         // 重新派生子数组
-        state.publicLinks = state.links.filter(l=>!l.isPrivate); 
-        state.privateLinks = state.links.filter(l=>l.isPrivate); 
+        syncDerived();
         
         renderSections(); 
         hideDialog('link-dialog'); 
     }
 
-    async function removeCard(url) { if(await customConfirm('确定删除吗？删除后点击保存生效。')) { state.links = state.links.filter(l=>l.url!==url); state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); } }
+    async function removeCard(url) { if(await customConfirm('确定删除吗？删除后点击保存生效。')) { state.links = state.links.filter(l=>l.url!==url); syncDerived(); renderSections(); } }
     async function addCategory() { const n = await customPrompt('新分类名称'); if(n) { if(state.categories[n]) return customAlert('分类已存在'); state.categories[n] = []; renderSections(); updateCategoryButtons(); updateUI(); } }
     async function editCategory(old) { const n = await customPrompt('重命名分类', old); if(n && n!==old) { if(state.categories[n]) return customAlert('分类已存在'); const nc = {}; Object.keys(state.categories).forEach(k=>{ if(k===old) nc[n]=state.categories[old]; else nc[k]=state.categories[k]}); state.categories = nc; state.links.forEach(l=>{ if(l.category===old) l.category=n; }); renderSections(); updateCategoryButtons(); updateUI(); } }
-    async function delCategory(n) { if(await customConfirm('删除分类及所有链接？')) { delete state.categories[n]; state.links = state.links.filter(l=>l.category!==n); state.publicLinks = state.links.filter(l=>!l.isPrivate); state.privateLinks = state.links.filter(l=>l.isPrivate); renderSections(); updateCategoryButtons(); updateUI(); } }
+    async function delCategory(n) { if(await customConfirm('删除分类及所有链接？')) { delete state.categories[n]; state.links = state.links.filter(l=>l.category!==n); syncDerived(); renderSections(); updateCategoryButtons(); updateUI(); } }
     function moveCategory(n, d) { const k = Object.keys(state.categories); const i = k.indexOf(n); if(i+d>=0 && i+d<k.length) { const t=k[i]; k[i]=k[i+d]; k[i+d]=t; const nc={}; k.forEach(x=>nc[x]=state.categories[x]); state.categories=nc; renderSections(); updateCategoryButtons(); updateUI(); } }
     // 优化：使用常量 USER ID
     async function saveData() { showLoading('保存...'); const res = await api('/api/saveOrder', 'POST', {userId: CURRENT_USER_ID, links:state.links, categories:state.categories}); if(!res.error) { localStorage.setItem('flowtab_cache_' + CURRENT_USER_ID, JSON.stringify({links:state.links, categories:state.categories})); } hideLoading(); renderSections(); }
