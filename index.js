@@ -471,39 +471,15 @@ const HTML_CONTENT = `
     } catch(e) {}
     const iconCache = (() => { try { return JSON.parse(localStorage.getItem(ICON_CACHE_KEY) || '{}') || {}; } catch(e) { return {}; } })();
     function saveIconCache() { try { localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(iconCache)); } catch(e) {} }
-    // 已知会返回"通用默认图"的服务URL片段，命中视为无效（防御旧缓存/残留数据）
-    const GENERIC_ICON_URL_MARKS = ['s2/favicons', 'duckduckgo.com/ip3', 'icon.horse/icon', 'faviconextractor.com', 'faviconkit.com'];
-    function isGenericIconUrl(src) {
-        return GENERIC_ICON_URL_MARKS.some(m => src.indexOf(m) !== -1);
-    }
     // 校验加载成功的图标是否可用：排除尺寸过小的占位图/坏图
     function isUsableFavicon(img) {
         const w = img.naturalWidth, h = img.naturalHeight;
         return !!w && !!h && w >= 8 && h >= 8;
     }
-    // 图标获取：单一可靠源 faviconV2。它对有图标的站点返回真实图标，对无图标的站点返回404，
-    // 会自然进入首字母兜底；不使用其它会返回"通用默认图"的服务，避免挡住首字母头像。
+    // 图标获取：Google s2。有图标的站点返回真实图标，无图标的站点返回地球默认图。
     const FAVICON_SERVICES = [
-        d => 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://' + d + '&size=64'
+        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
     ];
-    // 生成首字母头像：取名称的第一个汉字/字母，白字 + 彩色底（按域名哈希分配颜色），作为最终兜底
-    function makeLetterAvatar(name, domain) {
-        try {
-            const chars = Array.from(String(name || domain || '?').trim());
-            let letter = '?';
-            for (const ch of chars) {
-                const up = ch.toUpperCase();
-                if (/[A-Z0-9\u4e00-\u9fff]/.test(up)) { letter = up; break; }
-            }
-            const avatarColors = ['#e74c3c', '#c0392b', '#e67e22', '#f39c12', '#27ae60', '#16a085', '#2980b9', '#3498db', '#9b59b6', '#8e44ad', '#d35400', '#2c3e50'];
-            let hash = 0;
-            const src = domain || name || '';
-            for (let i = 0; i < src.length; i++) hash = src.charCodeAt(i) + ((hash << 5) - hash);
-            const bg = avatarColors[Math.abs(hash) % avatarColors.length];
-            const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="' + bg + '"/><text x="16" y="22.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#ffffff" font-family="Segoe UI,Arial,sans-serif">' + letter + '</text></svg>';
-            return 'data:image/svg+xml,' + encodeURIComponent(svg);
-        } catch(e) { return DEFAULT_ICON_BASE64; }
-    }
     // 性能优化：批量更新分类派生数组
     function syncDerived() {
         state.publicLinks = state.links.filter(l=>!l.isPrivate);
@@ -539,7 +515,7 @@ const HTML_CONTENT = `
         icon.loading = "lazy";
         icon.referrerPolicy = "no-referrer";
 
-        // 图标多源 fallback: 用户自定义 → 本地缓存 → 多个favicon服务 → 首字母Logo(白字深色底)
+        // 图标多源 fallback: 用户自定义 → 本地缓存 → Google s2（无图标时默认地球）
         const hasCustomIcon = link.icon && typeof link.icon === 'string' && link.icon.trim() && isValidUrl(link.icon);
         const domain = extractDomain(link.url);
         const cacheKey = domain;
@@ -567,8 +543,8 @@ const HTML_CONTENT = `
             } else if (iconStep < iconCandidates.length - 1) {
                 this.src = iconCandidates[++iconStep];
             } else {
-                // 最终 fallback：名称首个汉字/字母，白字 + 彩色底头像
-                this.src = makeLetterAvatar(link.name, domain);
+                // 最终兜底：s2 也不可用（如网络异常）时显示内置默认图标
+                this.src = DEFAULT_ICON_BASE64;
                 this.dataset.broken = '1';
             }
         };
@@ -577,8 +553,8 @@ const HTML_CONTENT = `
         icon.onload = function() {
             if (this.dataset.broken === '1') return;
             const src = this.src;
-            if (!isUsableFavicon(this) || (!hasCustomIcon && src && isGenericIconUrl(src))) {
-                // 加载成功但图片无效（尺寸过小/通用默认图）：清除缓存并继续 fallback 链
+            if (!isUsableFavicon(this)) {
+                // 加载成功但图片无效（尺寸过小）：清除缓存并继续 fallback 链
                 if (cachedIcon) {
                     cachedIcon = null;
                     delete iconCache[cacheKey];
