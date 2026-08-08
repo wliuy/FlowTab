@@ -323,7 +323,7 @@ const HTML_CONTENT = `
     // 新增：域名提取
     function extractDomain(url) {
         let u = String(url || '').trim();
-        if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+        if (!/^https?:\\/\\//i.test(u)) u = 'http://' + u;
         try {
             return new URL(u).hostname;
         } catch (e) {
