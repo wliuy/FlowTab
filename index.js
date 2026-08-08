@@ -322,13 +322,13 @@ const HTML_CONTENT = `
 
     // 新增：域名提取
     function extractDomain(url) {
-        let domain;
+        let u = String(url || '').trim();
+        if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
         try {
-            domain = new URL(url).hostname;
+            return new URL(u).hostname;
         } catch (e) {
-            domain = url;
+            return String(url || '').trim();
         }
-        return domain;
     }
 
     // 新增：URL有效性检查 (兼容 Data URI)
@@ -466,6 +466,32 @@ const HTML_CONTENT = `
     // 性能优化：缓存成功的图标URL，避免重复网络请求
     const iconCache = JSON.parse(localStorage.getItem('flowtab_icon_cache') || '{}');
     function saveIconCache() { localStorage.setItem('flowtab_icon_cache', JSON.stringify(iconCache)); }
+    // 图标多源 fallback：免费 favicon 服务列表（按可靠性排序，失败自动切换下一源）
+    const FAVICON_SERVICES = [
+        d => 'https://www.faviconextractor.com/favicon/' + d,
+        d => 'https://icon.horse/icon/' + d,
+        d => 'https://icons.duckduckgo.com/ip3/' + d + '.ico',
+        d => 'https://api.faviconkit.com/' + d + '/64',
+        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
+    ];
+    // 生成首字母 Logo：取名称的第一个汉字/字母，白字深色底，作为最终兜底
+    function makeLetterAvatar(name, domain) {
+        try {
+            const chars = Array.from(String(name || domain || '?').trim());
+            let letter = '?';
+            for (const ch of chars) {
+                const up = ch.toUpperCase();
+                if (/[A-Z0-9\u4e00-\u9fff]/.test(up)) { letter = up; break; }
+            }
+            const darkColors = ['#20242e', '#262b38', '#2b3040', '#1f2d33', '#2d2537', '#332a2a', '#23303a', '#2a2a34'];
+            let hash = 0;
+            const src = domain || name || '';
+            for (let i = 0; i < src.length; i++) hash = src.charCodeAt(i) + ((hash << 5) - hash);
+            const bg = darkColors[Math.abs(hash) % darkColors.length];
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="' + bg + '"/><text x="16" y="22.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#ffffff" font-family="Segoe UI,Arial,sans-serif">' + letter + '</text></svg>';
+            return 'data:image/svg+xml,' + encodeURIComponent(svg);
+        } catch(e) { return DEFAULT_ICON_BASE64; }
+    }
     // 性能优化：批量更新分类派生数组
     function syncDerived() {
         state.publicLinks = state.links.filter(l=>!l.isPrivate);
@@ -492,24 +518,26 @@ const HTML_CONTENT = `
         card.style.setProperty('--card-index', cont.children.length);
         
         // 优化：图标显示逻辑
-        const defaultIconSVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
-
         const cardTop = document.createElement('div');
         cardTop.className = 'card-top';
 
         const icon = document.createElement('img');
         icon.className = 'card-icon';
-        
-        // 图标多源 fallback: 用户自定义 → 缓存 → faviconextractor → Google favicon → 首字母Logo
+
+        // 图标多源 fallback: 用户自定义 → 本地缓存 → 多个favicon服务 → 首字母Logo(白字深色底)
         const hasCustomIcon = link.icon && typeof link.icon === 'string' && link.icon.trim() && isValidUrl(link.icon);
         const domain = extractDomain(link.url);
         const cacheKey = domain;
 
-        if (!hasCustomIcon && iconCache[cacheKey]) {
-            icon.src = iconCache[cacheKey];
-        } else {
-            icon.src = hasCustomIcon ? link.icon : 'https://www.faviconextractor.com/favicon/' + domain;
-        }
+        // 候选图标源（按优先级排序，失败自动切换下一源）
+        const iconCandidates = [];
+        if (hasCustomIcon) iconCandidates.push(link.icon.trim());
+        FAVICON_SERVICES.forEach(fn => iconCandidates.push(fn(domain)));
+
+        // 优先使用本地缓存（命中data URI等无需网络请求，秒开）
+        let cachedIcon = (!hasCustomIcon && iconCache[cacheKey]) ? iconCache[cacheKey] : null;
+        icon.src = cachedIcon || iconCandidates[0];
+        let iconStep = cachedIcon ? -1 : 0;
 
         icon.alt = link.name;
         icon.loading = "lazy";
@@ -517,33 +545,31 @@ const HTML_CONTENT = `
 
         // 图标加载失败 fallback 链
         icon.onerror = function() {
-            if (this.dataset.fallbackStep === undefined) this.dataset.fallbackStep = '0';
-            var step = parseInt(this.dataset.fallbackStep);
-            if (step === 0 && !hasCustomIcon) {
-                this.src = 'https://www.google.com/s2/favicons?domain=' + domain + '&sz=32';
-                this.dataset.fallbackStep = '1';
+            if (this.dataset.broken === '1') return;
+            if (cachedIcon) {
+                // 缓存的图标已失效，从头走一遍候选源
+                cachedIcon = null;
+                this.src = iconCandidates[0];
+                iconStep = 0;
+            } else if (iconStep < iconCandidates.length - 1) {
+                this.src = iconCandidates[++iconStep];
             } else {
-                // 最终 fallback：使用网站首字母 Logo
-                try {
-                    var letter = (link.name || domain || '?').charAt(0).toUpperCase().replace(/[^A-Z0-9\u4e00-\u9fff]/i, '');
-                    if (!letter) letter = '?';
-                    var colors = ['#43b883','#5d7fb9','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#3498db'];
-                    var hash = 0;
-                    for (var i = 0; i < domain.length; i++) hash = domain.charCodeAt(i) + ((hash << 5) - hash);
-                    var bg = colors[Math.abs(hash) % colors.length];
-                    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="' + bg + '"/><text x="16" y="22" text-anchor="middle" font-size="18" font-weight="bold" fill="white" font-family="Arial,sans-serif">' + letter + '</text></svg>';
-                    this.src = 'data:image/svg+xml,' + encodeURIComponent(svg);
-                } catch(e) {
-                    this.src = DEFAULT_ICON_BASE64;
-                }
-                this.onerror = null;
+                // 最终 fallback：名称首个汉字/字母，白字深色底 Logo
+                this.src = makeLetterAvatar(link.name, domain);
+                this.dataset.broken = '1';
             }
         };
 
-        // 缓存成功的图标URL
+        // 缓存成功的图标URL；同时检测"加载成功但图片无效"的情况
         icon.onload = function() {
-            if (!hasCustomIcon && this.src && !this.src.startsWith('data:') && this.src !== iconCache[cacheKey]) {
-                iconCache[cacheKey] = this.src;
+            if (this.dataset.broken === '1') return;
+            if (!this.naturalWidth || !this.naturalHeight) {
+                this.onerror();
+                return;
+            }
+            const src = this.src;
+            if (!hasCustomIcon && src && src !== iconCache[cacheKey]) {
+                iconCache[cacheKey] = src;
                 saveIconCache();
             }
         };
@@ -1092,20 +1118,30 @@ export default {
                     let icon = '';
 
                     // 流式解析 HTML
+                    const iconHandler = {
+                        element(element) {
+                            if (icon) return;
+                            const href = element.getAttribute('href');
+                            if (href) icon = href;
+                        }
+                    };
                     const rewriter = new HTMLRewriter()
                         .on('title', {
                             text(text) {
                                 if (title.length < 100) title += text.text;
                             }
                         })
-                        .on('link[rel~="icon"]', {
+                        .on('link[rel~="icon"]', iconHandler)
+                        .on('link[rel~="shortcut icon"]', iconHandler)
+                        .on('link[rel~="apple-touch-icon"]', iconHandler)
+                        .on('link[rel~="apple-touch-icon-precomposed"]', iconHandler)
+                        .on('link[rel~="fluid-icon"]', iconHandler)
+                        .on('meta[name="msapplication-TileImage"]', {
                             element(element) {
-                                if (!icon) icon = element.getAttribute('href');
-                            }
-                        })
-                        .on('link[rel~="shortcut icon"]', {
-                            element(element) {
-                                if (!icon) icon = element.getAttribute('href');
+                                if (!icon) {
+                                    const c = element.getAttribute('content');
+                                    if (c) icon = c;
+                                }
                             }
                         });
 
@@ -1113,8 +1149,11 @@ export default {
                     await transformed.text(); // 消费流以触发解析
 
                     if (title) title = title.trim().replace(/[\r\n]+/g, ' ');
-                    if (icon && !icon.startsWith('http')) {
-                        try { icon = new URL(icon, u).href; } catch (e) {}
+                    if (icon) {
+                        if (icon.startsWith('//')) icon = 'https:' + icon;
+                        else if (!/^(https?:|data:|blob:)/i.test(icon)) {
+                            try { icon = new URL(icon, u).href; } catch (e) {}
+                        }
                     }
 
                     const data = { title, icon };
