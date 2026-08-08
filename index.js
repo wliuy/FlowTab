@@ -463,17 +463,22 @@ const HTML_CONTENT = `
         });
     }
 
-    // 性能优化：缓存成功的图标URL，避免重复网络请求
-    const iconCache = JSON.parse(localStorage.getItem('flowtab_icon_cache') || '{}');
-    function saveIconCache() { localStorage.setItem('flowtab_icon_cache', JSON.stringify(iconCache)); }
+    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v2: 清空旧版被坏图污染的缓存)
+    const iconCache = JSON.parse(localStorage.getItem('flowtab_icon_cache_v2') || '{}');
+    function saveIconCache() { localStorage.setItem('flowtab_icon_cache_v2', JSON.stringify(iconCache)); }
     // 图标多源 fallback：免费 favicon 服务列表（按可靠性排序，失败自动切换下一源）
+    // 说明：faviconV2 对无图标的站点返回404，会自然进入下一源/首字母兜底；已移除返回"假图"的 faviconextractor 和已停用的 faviconkit
     const FAVICON_SERVICES = [
-        d => 'https://www.faviconextractor.com/favicon/' + d,
-        d => 'https://icon.horse/icon/' + d,
+        d => 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://' + d + '&size=64',
+        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64',
         d => 'https://icons.duckduckgo.com/ip3/' + d + '.ico',
-        d => 'https://api.faviconkit.com/' + d + '/64',
-        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
+        d => 'https://icon.horse/icon/' + d
     ];
+    // 校验加载成功的图标是否可用：排除尺寸过小的占位图/坏图
+    function isUsableFavicon(img) {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        return !!w && !!h && w >= 8 && h >= 8;
+    }
     // 生成首字母 Logo：取名称的第一个汉字/字母，白字深色底，作为最终兜底
     function makeLetterAvatar(name, domain) {
         try {
@@ -523,6 +528,9 @@ const HTML_CONTENT = `
 
         const icon = document.createElement('img');
         icon.className = 'card-icon';
+        icon.alt = link.name;
+        icon.loading = "lazy";
+        icon.referrerPolicy = "no-referrer";
 
         // 图标多源 fallback: 用户自定义 → 本地缓存 → 多个favicon服务 → 首字母Logo(白字深色底)
         const hasCustomIcon = link.icon && typeof link.icon === 'string' && link.icon.trim() && isValidUrl(link.icon);
@@ -536,19 +544,17 @@ const HTML_CONTENT = `
 
         // 优先使用本地缓存（命中data URI等无需网络请求，秒开）
         let cachedIcon = (!hasCustomIcon && iconCache[cacheKey]) ? iconCache[cacheKey] : null;
-        icon.src = cachedIcon || iconCandidates[0];
         let iconStep = cachedIcon ? -1 : 0;
-
-        icon.alt = link.name;
-        icon.loading = "lazy";
-        icon.referrerPolicy = "no-referrer";
+        icon.src = cachedIcon || iconCandidates[0];
 
         // 图标加载失败 fallback 链
         icon.onerror = function() {
             if (this.dataset.broken === '1') return;
             if (cachedIcon) {
-                // 缓存的图标已失效，从头走一遍候选源
+                // 缓存的图标已失效：清除缓存，从头走一遍候选源
                 cachedIcon = null;
+                delete iconCache[cacheKey];
+                saveIconCache();
                 this.src = iconCandidates[0];
                 iconStep = 0;
             } else if (iconStep < iconCandidates.length - 1) {
@@ -563,7 +569,8 @@ const HTML_CONTENT = `
         // 缓存成功的图标URL；同时检测"加载成功但图片无效"的情况
         icon.onload = function() {
             if (this.dataset.broken === '1') return;
-            if (!this.naturalWidth || !this.naturalHeight) {
+            if (!isUsableFavicon(this)) {
+                // 加载成功但图片太小/无效（占位图），继续走 fallback 链
                 this.onerror();
                 return;
             }
