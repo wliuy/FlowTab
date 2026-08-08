@@ -466,20 +466,17 @@ const HTML_CONTENT = `
     // 性能优化：缓存成功的图标URL，避免重复网络请求 (v2: 清空旧版被坏图污染的缓存)
     const iconCache = JSON.parse(localStorage.getItem('flowtab_icon_cache_v2') || '{}');
     function saveIconCache() { localStorage.setItem('flowtab_icon_cache_v2', JSON.stringify(iconCache)); }
-    // 图标多源 fallback：免费 favicon 服务列表（按可靠性排序，失败自动切换下一源）
-    // 说明：faviconV2 对无图标的站点返回404，会自然进入下一源/首字母兜底；已移除返回"假图"的 faviconextractor 和已停用的 faviconkit
+    // 图标获取：单一可靠源 faviconV2。它对有图标的站点返回真实图标，对无图标的站点返回404，
+    // 会自然进入首字母兜底；不使用其它会返回"通用默认图"的服务，避免挡住首字母头像。
     const FAVICON_SERVICES = [
-        d => 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://' + d + '&size=64',
-        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64',
-        d => 'https://icons.duckduckgo.com/ip3/' + d + '.ico',
-        d => 'https://icon.horse/icon/' + d
+        d => 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://' + d + '&size=64'
     ];
     // 校验加载成功的图标是否可用：排除尺寸过小的占位图/坏图
     function isUsableFavicon(img) {
         const w = img.naturalWidth, h = img.naturalHeight;
         return !!w && !!h && w >= 8 && h >= 8;
     }
-    // 生成首字母 Logo：取名称的第一个汉字/字母，白字深色底，作为最终兜底
+    // 生成首字母头像：取名称的第一个汉字/字母，白字 + 彩色底（按域名哈希分配颜色），作为最终兜底
     function makeLetterAvatar(name, domain) {
         try {
             const chars = Array.from(String(name || domain || '?').trim());
@@ -488,11 +485,11 @@ const HTML_CONTENT = `
                 const up = ch.toUpperCase();
                 if (/[A-Z0-9\u4e00-\u9fff]/.test(up)) { letter = up; break; }
             }
-            const darkColors = ['#20242e', '#262b38', '#2b3040', '#1f2d33', '#2d2537', '#332a2a', '#23303a', '#2a2a34'];
+            const avatarColors = ['#e74c3c', '#c0392b', '#e67e22', '#f39c12', '#27ae60', '#16a085', '#2980b9', '#3498db', '#9b59b6', '#8e44ad', '#d35400', '#2c3e50'];
             let hash = 0;
             const src = domain || name || '';
             for (let i = 0; i < src.length; i++) hash = src.charCodeAt(i) + ((hash << 5) - hash);
-            const bg = darkColors[Math.abs(hash) % darkColors.length];
+            const bg = avatarColors[Math.abs(hash) % avatarColors.length];
             const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="' + bg + '"/><text x="16" y="22.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#ffffff" font-family="Segoe UI,Arial,sans-serif">' + letter + '</text></svg>';
             return 'data:image/svg+xml,' + encodeURIComponent(svg);
         } catch(e) { return DEFAULT_ICON_BASE64; }
