@@ -463,19 +463,29 @@ const HTML_CONTENT = `
         });
     }
 
-    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v2: 清空旧版被坏图污染的缓存)
-    const iconCache = JSON.parse(localStorage.getItem('flowtab_icon_cache_v2') || '{}');
-    function saveIconCache() { localStorage.setItem('flowtab_icon_cache_v2', JSON.stringify(iconCache)); }
-    // 图标获取：单一可靠源 faviconV2。它对有图标的站点返回真实图标，对无图标的站点返回404，
-    // 会自然进入首字母兜底；不使用其它会返回"通用默认图"的服务，避免挡住首字母头像。
-    const FAVICON_SERVICES = [
-        d => 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://' + d + '&size=64'
-    ];
+    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v3: 清除旧版缓存中可能残留的"通用默认图"，如 Google s2 地球)
+    const ICON_CACHE_KEY = 'flowtab_icon_cache_v3';
+    try {
+        localStorage.removeItem('flowtab_icon_cache');
+        localStorage.removeItem('flowtab_icon_cache_v2');
+    } catch(e) {}
+    const iconCache = (() => { try { return JSON.parse(localStorage.getItem(ICON_CACHE_KEY) || '{}') || {}; } catch(e) { return {}; } })();
+    function saveIconCache() { try { localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(iconCache)); } catch(e) {} }
+    // 已知会返回"通用默认图"的服务URL片段，命中视为无效（防御旧缓存/残留数据）
+    const GENERIC_ICON_URL_MARKS = ['s2/favicons', 'duckduckgo.com/ip3', 'icon.horse/icon', 'faviconextractor.com', 'faviconkit.com'];
+    function isGenericIconUrl(src) {
+        return GENERIC_ICON_URL_MARKS.some(m => src.indexOf(m) !== -1);
+    }
     // 校验加载成功的图标是否可用：排除尺寸过小的占位图/坏图
     function isUsableFavicon(img) {
         const w = img.naturalWidth, h = img.naturalHeight;
         return !!w && !!h && w >= 8 && h >= 8;
     }
+    // 图标获取：单一可靠源 faviconV2。它对有图标的站点返回真实图标，对无图标的站点返回404，
+    // 会自然进入首字母兜底；不使用其它会返回"通用默认图"的服务，避免挡住首字母头像。
+    const FAVICON_SERVICES = [
+        d => 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://' + d + '&size=64'
+    ];
     // 生成首字母头像：取名称的第一个汉字/字母，白字 + 彩色底（按域名哈希分配颜色），作为最终兜底
     function makeLetterAvatar(name, domain) {
         try {
@@ -557,7 +567,7 @@ const HTML_CONTENT = `
             } else if (iconStep < iconCandidates.length - 1) {
                 this.src = iconCandidates[++iconStep];
             } else {
-                // 最终 fallback：名称首个汉字/字母，白字深色底 Logo
+                // 最终 fallback：名称首个汉字/字母，白字 + 彩色底头像
                 this.src = makeLetterAvatar(link.name, domain);
                 this.dataset.broken = '1';
             }
@@ -566,12 +576,17 @@ const HTML_CONTENT = `
         // 缓存成功的图标URL；同时检测"加载成功但图片无效"的情况
         icon.onload = function() {
             if (this.dataset.broken === '1') return;
-            if (!isUsableFavicon(this)) {
-                // 加载成功但图片太小/无效（占位图），继续走 fallback 链
+            const src = this.src;
+            if (!isUsableFavicon(this) || (!hasCustomIcon && src && isGenericIconUrl(src))) {
+                // 加载成功但图片无效（尺寸过小/通用默认图）：清除缓存并继续 fallback 链
+                if (cachedIcon) {
+                    cachedIcon = null;
+                    delete iconCache[cacheKey];
+                    saveIconCache();
+                }
                 this.onerror();
                 return;
             }
-            const src = this.src;
             if (!hasCustomIcon && src && src !== iconCache[cacheKey]) {
                 iconCache[cacheKey] = src;
                 saveIconCache();
