@@ -463,12 +463,13 @@ const HTML_CONTENT = `
         });
     }
 
-    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v4: 清除旧缓存中残留的第三方深色占位图)
-    const ICON_CACHE_KEY = 'flowtab_icon_cache_v4';
+    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v5: 清除缓存中的旧图标URL，配合代理URL版本化强制刷新)
+    const ICON_CACHE_KEY = 'flowtab_icon_cache_v5';
     try {
         localStorage.removeItem('flowtab_icon_cache');
         localStorage.removeItem('flowtab_icon_cache_v2');
         localStorage.removeItem('flowtab_icon_cache_v3');
+        localStorage.removeItem('flowtab_icon_cache_v4');
     } catch(e) {}
     const iconCache = (() => { try { return JSON.parse(localStorage.getItem(ICON_CACHE_KEY) || '{}') || {}; } catch(e) { return {}; } })();
     function saveIconCache() { try { localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(iconCache)); } catch(e) {} }
@@ -478,8 +479,9 @@ const HTML_CONTENT = `
         return !!w && !!h && w >= 8 && h >= 8;
     }
     // 图标获取：优先走服务器代理(经 Cloudflare 网络访问，国内网络可达)，Google s2 作为兜底源。
+    // 代理URL带版本号(v=2)，用于强制刷新浏览器/边缘缓存的旧图标
     const FAVICON_SERVICES = [
-        d => '/api/favicon?domain=' + encodeURIComponent(d),
+        d => '/api/favicon?domain=' + encodeURIComponent(d) + '&v=2',
         d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
     ];
     // 性能优化：批量更新分类派生数组
@@ -1213,7 +1215,7 @@ export default {
             const resp = new Response(icon.buf, {
                 headers: {
                     'Content-Type': icon.ct || 'image/x-icon',
-                    'Cache-Control': 'public, max-age=86400',
+                    'Cache-Control': 'public, max-age=3600',
                     'Access-Control-Allow-Origin': '*'
                 }
             });
