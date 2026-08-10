@@ -241,21 +241,8 @@ const HTML_CONTENT = `
     const APP_VERSION = '1.0.2';
     // 优化：定义 User ID 常量
     const CURRENT_USER_ID = 'testUser';
-    // 获取当前主题主色（默认主题绿色），用于生成占位图标
-    function getThemePrimary() {
-        try {
-            const c = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-            if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(c)) return c;
-        } catch(e) {}
-        return '#43b883';
-    }
-    // 生成占位图标：主题绿色背景 + 卡片名称首字
-    function makeLetterIcon(name) {
-        const ch = (String(name || '').trim().charAt(0) || '?').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const color = getThemePrimary();
-        const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' rx='14' fill='" + color + "'/><text x='32' y='32' font-family='sans-serif' font-weight='bold' font-size='34' fill='#ffffff' text-anchor='middle' dominant-baseline='central'>" + ch + "</text></svg>";
-        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    }
+    // 统一兜底图标：主题绿色圆角方块 + 白色波浪 logo（与页头一致），所有无图标卡片显示相同图形
+    const FALLBACK_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgcng9JzIwJyBmaWxsPScjNDNiODgzJy8+PHBhdGggZD0nTTEwIDUyIEMgMzIgNDAsIDcwIDgyLCA5MCA1MCcgc3Ryb2tlPScjZmZmZmZmJyBzdHJva2Utd2lkdGg9JzknIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgZmlsbD0nbm9uZScvPjxjaXJjbGUgY3g9JzcyJyBjeT0nMzQnIHI9JzcnIGZpbGw9JyNmZmZmZmYnLz48L3N2Zz4=";
 
     function el(id) { return document.getElementById(id); }
     function showDialog(id) { const d = el(id); if(d) { d.style.display = 'flex'; const i = d.querySelectorAll('input'); if(i.length) setTimeout(()=>i[0].focus(),100); } }
@@ -476,11 +463,12 @@ const HTML_CONTENT = `
         });
     }
 
-    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v3: 清除旧版缓存中可能残留的"通用默认图"，如 Google s2 地球)
-    const ICON_CACHE_KEY = 'flowtab_icon_cache_v3';
+    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v4: 清除旧缓存中残留的第三方深色占位图)
+    const ICON_CACHE_KEY = 'flowtab_icon_cache_v4';
     try {
         localStorage.removeItem('flowtab_icon_cache');
         localStorage.removeItem('flowtab_icon_cache_v2');
+        localStorage.removeItem('flowtab_icon_cache_v3');
     } catch(e) {}
     const iconCache = (() => { try { return JSON.parse(localStorage.getItem(ICON_CACHE_KEY) || '{}') || {}; } catch(e) { return {}; } })();
     function saveIconCache() { try { localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(iconCache)); } catch(e) {} }
@@ -489,13 +477,10 @@ const HTML_CONTENT = `
         const w = img.naturalWidth, h = img.naturalHeight;
         return !!w && !!h && w >= 8 && h >= 8;
     }
-    // 图标获取：优先走服务器代理(经 Cloudflare 网络访问，国内网络可达)，再尝试多个第三方源。
+    // 图标获取：优先走服务器代理(经 Cloudflare 网络访问，国内网络可达)，Google s2 作为兜底源。
     const FAVICON_SERVICES = [
         d => '/api/favicon?domain=' + encodeURIComponent(d),
-        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64',
-        d => 'https://icons.duckduckgo.com/ip3/' + d + '.ico',
-        d => 'https://favicon.im/' + d,
-        d => 'https://api.iowen.cn/favicon/' + d + '.png'
+        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
     ];
     // 性能优化：批量更新分类派生数组
     function syncDerived() {
@@ -560,8 +545,8 @@ const HTML_CONTENT = `
             } else if (iconStep < iconCandidates.length - 1) {
                 this.src = iconCandidates[++iconStep];
             } else {
-                // 最终兜底：所有图标源均不可用（如网络异常）时，生成主题绿色+首字占位图标
-                this.src = makeLetterIcon(link.name);
+                // 最终兜底：所有图标源均不可用（如网络异常）时，显示统一美观的占位图标
+                this.src = FALLBACK_ICON;
                 this.dataset.broken = '1';
             }
         };
@@ -1030,10 +1015,7 @@ async function fetchHitokotoServer() {
 async function fetchFaviconServer(domain) {
     const candidates = [
         { url: 'https://' + domain + '/favicon.ico' },
-        { url: 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=64' },
-        { url: 'https://icons.duckduckgo.com/ip3/' + encodeURIComponent(domain) + '.ico' },
-        { url: 'https://favicon.im/' + encodeURIComponent(domain) },
-        { url: 'https://api.iowen.cn/favicon/' + encodeURIComponent(domain) + '.png' }
+        { url: 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=64' }
     ];
     for (const c of candidates) {
         try {
