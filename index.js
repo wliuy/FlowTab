@@ -72,6 +72,7 @@ const HTML_CONTENT = `
         .card-top { display: flex; align-items: center; margin-bottom: 6px; width: 100%; }
         /* 还原：移除之前添加的 pointer-events: none，因为现在依靠遮罩层来阻挡 */
         .card-icon { width: 16px; height: 16px; margin-right: 6px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+        .card-icon-emoji { width: 16px; height: 16px; margin-right: 6px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1; }
         .card-title { font-size: 14px; font-weight: 600; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .card-url { font-size: 12px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .private-tag { background-color: #ff9800; color: white; font-size: 10px; padding: 2px 5px; border-radius: 3px; position: absolute; top: 8px; right: 5px; }
@@ -241,8 +242,6 @@ const HTML_CONTENT = `
     const APP_VERSION = '1.0.2';
     // 优化：定义 User ID 常量
     const CURRENT_USER_ID = 'testUser';
-    // 统一兜底图标：主题绿色圆角方块 + 白色波浪 logo（与页头一致），所有无图标卡片显示相同图形
-    const FALLBACK_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgcng9JzIwJyBmaWxsPScjNDNiODgzJy8+PHBhdGggZD0nTTEwIDUyIEMgMzIgNDAsIDcwIDgyLCA5MCA1MCcgc3Ryb2tlPScjZmZmZmZmJyBzdHJva2Utd2lkdGg9JzknIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgZmlsbD0nbm9uZScvPjxjaXJjbGUgY3g9JzcyJyBjeT0nMzQnIHI9JzcnIGZpbGw9JyNmZmZmZmYnLz48L3N2Zz4=";
 
     function el(id) { return document.getElementById(id); }
     function showDialog(id) { const d = el(id); if(d) { d.style.display = 'flex'; const i = d.querySelectorAll('input'); if(i.length) setTimeout(()=>i[0].focus(),100); } }
@@ -463,13 +462,14 @@ const HTML_CONTENT = `
         });
     }
 
-    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v5: 清除缓存中的旧图标URL，配合代理URL版本化强制刷新)
-    const ICON_CACHE_KEY = 'flowtab_icon_cache_v5';
+    // 性能优化：缓存成功的图标URL，避免重复网络请求 (v6: 清除缓存中残留的蓝地球/灰占位图)
+    const ICON_CACHE_KEY = 'flowtab_icon_cache_v6';
     try {
         localStorage.removeItem('flowtab_icon_cache');
         localStorage.removeItem('flowtab_icon_cache_v2');
         localStorage.removeItem('flowtab_icon_cache_v3');
         localStorage.removeItem('flowtab_icon_cache_v4');
+        localStorage.removeItem('flowtab_icon_cache_v5');
     } catch(e) {}
     const iconCache = (() => { try { return JSON.parse(localStorage.getItem(ICON_CACHE_KEY) || '{}') || {}; } catch(e) { return {}; } })();
     function saveIconCache() { try { localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(iconCache)); } catch(e) {} }
@@ -478,11 +478,9 @@ const HTML_CONTENT = `
         const w = img.naturalWidth, h = img.naturalHeight;
         return !!w && !!h && w >= 8 && h >= 8;
     }
-    // 图标获取：优先走服务器代理(经 Cloudflare 网络访问，国内网络可达)，Google s2 作为兜底源。
-    // 代理URL带版本号(v=2)，用于强制刷新浏览器/边缘缓存的旧图标
+    // 图标获取：仅走服务端代理(只返回真实图标，不产生占位图)。URL 带版本号用于强制刷新缓存。
     const FAVICON_SERVICES = [
-        d => '/api/favicon?domain=' + encodeURIComponent(d) + '&v=2',
-        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
+        d => '/api/favicon?domain=' + encodeURIComponent(d) + '&v=3'
     ];
     // 性能优化：批量更新分类派生数组
     function syncDerived() {
@@ -547,9 +545,11 @@ const HTML_CONTENT = `
             } else if (iconStep < iconCandidates.length - 1) {
                 this.src = iconCandidates[++iconStep];
             } else {
-                // 最终兜底：所有图标源均不可用（如网络异常）时，显示统一美观的占位图标
-                this.src = FALLBACK_ICON;
-                this.dataset.broken = '1';
+                // 最终兜底：所有真实图标源均不可用时，直接用 ⭐ Emoji 替换图片节点（原生文字渲染，稳定可靠）
+                const emoji = document.createElement('span');
+                emoji.className = 'card-icon card-icon-emoji';
+                emoji.textContent = '⭐';
+                this.replaceWith(emoji);
             }
         };
 
@@ -1012,31 +1012,69 @@ async function fetchHitokotoServer() {
 }
 
 /**
- * 辅助函数：服务端获取站点图标 (多源探测，经 Cloudflare 网络访问，国内可达)
+ * 辅助函数：服务端获取站点图标 (只返回真实图标，不产生占位图)
+ * 顺序：1) 站点根 /favicon.ico  2) 解析首页 <link rel="icon"> 后抓取真实图标
  */
 async function fetchFaviconServer(domain) {
-    const candidates = [
-        { url: 'https://' + domain + '/favicon.ico' },
-        { url: 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=64' }
-    ];
-    for (const c of candidates) {
-        try {
-            const res = await fetch(c.url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'image/avif,image/webp,image/png,image/svg+xml,image/x-icon,image/*;q=0.8,*/*;q=0.5'
-                },
-                redirect: 'follow'
-            });
-            if (!res.ok) continue;
-            const ct = res.headers.get('Content-Type') || '';
-            if (!/^image\//i.test(ct)) continue;
-            const buf = await res.arrayBuffer();
-            if (!buf || buf.byteLength < 32) continue;
-            return { buf, ct };
-        } catch (e) {}
-    }
+    // 1. 优先取站点根路径 favicon.ico
+    const rootIcon = await fetchImage('https://' + domain + '/favicon.ico');
+    if (rootIcon) return rootIcon;
+
+    // 2. 解析首页 <link rel="icon">，找到真实图标再抓取
+    try {
+        const res = await fetch('https://' + domain + '/', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            redirect: 'follow'
+        });
+        if (!res.ok) return null;
+        let iconUrl = '';
+        const iconHandler = {
+            element(element) {
+                if (iconUrl) return;
+                const href = element.getAttribute('href');
+                if (href) iconUrl = href;
+            }
+        };
+        const rewriter = new HTMLRewriter()
+            .on('link[rel~="icon"]', iconHandler)
+            .on('link[rel~="shortcut icon"]', iconHandler)
+            .on('link[rel~="apple-touch-icon"]', iconHandler)
+            .on('link[rel~="apple-touch-icon-precomposed"]', iconHandler);
+        const transformed = rewriter.transform(res);
+        await transformed.text();
+        if (iconUrl) {
+            if (iconUrl.startsWith('//')) iconUrl = 'https:' + iconUrl;
+            else if (!/^https?:/i.test(iconUrl)) {
+                try { iconUrl = new URL(iconUrl, 'https://' + domain + '/').href; } catch (e) {}
+            }
+            if (/^https?:/i.test(iconUrl)) return await fetchImage(iconUrl);
+        }
+    } catch (e) {}
     return null;
+}
+
+/**
+ * 辅助函数：抓取一张图片，仅当是有效图片内容时返回
+ */
+async function fetchImage(url) {
+    try {
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/png,image/svg+xml,image/x-icon,image/*;q=0.8,*/*;q=0.5'
+            },
+            redirect: 'follow'
+        });
+        if (!res.ok) return null;
+        const ct = res.headers.get('Content-Type') || '';
+        if (!/^image\//i.test(ct)) return null;
+        const buf = await res.arrayBuffer();
+        if (!buf || buf.byteLength < 32) return null;
+        return { buf, ct };
+    } catch (e) { return null; }
 }
 
 /**
