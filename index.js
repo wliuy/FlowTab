@@ -241,8 +241,21 @@ const HTML_CONTENT = `
     const APP_VERSION = '1.0.2';
     // 优化：定义 User ID 常量
     const CURRENT_USER_ID = 'testUser';
-    // 优化：定义默认图标 Base64 常量
-    const DEFAULT_ICON_BASE64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTAgMTNhNSA1IDAgMCAwIDcuNTQuNTRsMy0zYTUgNSAwIDAgMC03LjA3LTcuMDdsLTEuNzIgMS43MSIvPjxwYXRoIGQ9Ik0xNCAxMWE1IDUgMCAwIDAtNy41NC0uNTRsLTMgM2E1IDUgMCAwIDAtNy41NC0uNTRsLTMgM2E1IDUgMCAwIDAtNy41NC0uNTRsLTMgM2E1IDUgMCAwIDAtNy41NC0uNTRsLTMgM2E1IDUgMCAwIDAgNy4wNyA3LjA3bDEuNzEtMS43MSIvPjwvc3ZnPg==";
+    // 获取当前主题主色（默认主题绿色），用于生成占位图标
+    function getThemePrimary() {
+        try {
+            const c = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+            if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(c)) return c;
+        } catch(e) {}
+        return '#43b883';
+    }
+    // 生成占位图标：主题绿色背景 + 卡片名称首字
+    function makeLetterIcon(name) {
+        const ch = (String(name || '').trim().charAt(0) || '?').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const color = getThemePrimary();
+        const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' rx='14' fill='" + color + "'/><text x='32' y='32' font-family='sans-serif' font-weight='bold' font-size='34' fill='#ffffff' text-anchor='middle' dominant-baseline='central'>" + ch + "</text></svg>";
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
 
     function el(id) { return document.getElementById(id); }
     function showDialog(id) { const d = el(id); if(d) { d.style.display = 'flex'; const i = d.querySelectorAll('input'); if(i.length) setTimeout(()=>i[0].focus(),100); } }
@@ -476,9 +489,13 @@ const HTML_CONTENT = `
         const w = img.naturalWidth, h = img.naturalHeight;
         return !!w && !!h && w >= 8 && h >= 8;
     }
-    // 图标获取：Google s2。有图标的站点返回真实图标，无图标的站点返回地球默认图。
+    // 图标获取：优先走服务器代理(经 Cloudflare 网络访问，国内网络可达)，再尝试多个第三方源。
     const FAVICON_SERVICES = [
-        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64'
+        d => '/api/favicon?domain=' + encodeURIComponent(d),
+        d => 'https://www.google.com/s2/favicons?domain=' + d + '&sz=64',
+        d => 'https://icons.duckduckgo.com/ip3/' + d + '.ico',
+        d => 'https://favicon.im/' + d,
+        d => 'https://api.iowen.cn/favicon/' + d + '.png'
     ];
     // 性能优化：批量更新分类派生数组
     function syncDerived() {
@@ -543,8 +560,8 @@ const HTML_CONTENT = `
             } else if (iconStep < iconCandidates.length - 1) {
                 this.src = iconCandidates[++iconStep];
             } else {
-                // 最终兜底：s2 也不可用（如网络异常）时显示内置默认图标
-                this.src = DEFAULT_ICON_BASE64;
+                // 最终兜底：所有图标源均不可用（如网络异常）时，生成主题绿色+首字占位图标
+                this.src = makeLetterIcon(link.name);
                 this.dataset.broken = '1';
             }
         };
@@ -1008,6 +1025,37 @@ async function fetchHitokotoServer() {
 }
 
 /**
+ * 辅助函数：服务端获取站点图标 (多源探测，经 Cloudflare 网络访问，国内可达)
+ */
+async function fetchFaviconServer(domain) {
+    const candidates = [
+        { url: 'https://' + domain + '/favicon.ico' },
+        { url: 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=64' },
+        { url: 'https://icons.duckduckgo.com/ip3/' + encodeURIComponent(domain) + '.ico' },
+        { url: 'https://favicon.im/' + encodeURIComponent(domain) },
+        { url: 'https://api.iowen.cn/favicon/' + encodeURIComponent(domain) + '.png' }
+    ];
+    for (const c of candidates) {
+        try {
+            const res = await fetch(c.url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'image/avif,image/webp,image/png,image/svg+xml,image/x-icon,image/*;q=0.8,*/*;q=0.5'
+                },
+                redirect: 'follow'
+            });
+            if (!res.ok) continue;
+            const ct = res.headers.get('Content-Type') || '';
+            if (!/^image\//i.test(ct)) continue;
+            const buf = await res.arrayBuffer();
+            if (!buf || buf.byteLength < 32) continue;
+            return { buf, ct };
+        } catch (e) {}
+    }
+    return null;
+}
+
+/**
  * 辅助函数：Base64 编码 (用于安全注入数据)
  */
 function encodeBase64(str) {
@@ -1162,6 +1210,33 @@ export default {
                 }
             }
             return response;
+        }
+
+        // ============================================================
+        // 4.1 获取站点图标 (服务端代理，国内网络可达)
+        // ============================================================
+        if (path === '/api/favicon') {
+            let domain = (url.searchParams.get('domain') || url.searchParams.get('url') || '').trim().toLowerCase();
+            domain = domain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0];
+            if (!domain || domain.length > 253 || /\s/.test(domain)) return new Response('Bad Request', { status: 400 });
+
+            const cacheKey = new Request(url.toString(), req);
+            const cache = caches.default;
+            let cached = await cache.match(cacheKey);
+            if (cached) return cached;
+
+            const icon = await fetchFaviconServer(domain);
+            if (!icon) return new Response('Not Found', { status: 404 });
+
+            const resp = new Response(icon.buf, {
+                headers: {
+                    'Content-Type': icon.ct || 'image/x-icon',
+                    'Cache-Control': 'public, max-age=86400',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            });
+            ctx.waitUntil(cache.put(cacheKey, resp.clone()));
+            return resp;
         }
 
         // ============================================================
