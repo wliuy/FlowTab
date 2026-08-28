@@ -262,7 +262,7 @@ const HTML_CONTENT = `
 
     const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
     const searchEngines = { baidu: "https://www.baidu.com/s?wd=", bing: "https://www.bing.com/search?q=", google: "https://www.google.com/search?q=", duckduckgo: "https://duckduckgo.com/?q=" };
-    function openInBackground(url) { const w = window.open(url, '_blank'); if (w) { try { w.opener = null; } catch(e){} try { w.blur(); window.focus(); } catch(e){} } }
+    function openInBackground(url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.style.display = 'none'; document.body.appendChild(a); a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, ctrlKey: true })); a.remove(); }
     let cardDragStart = null, cardDragConsumed = false;
     document.addEventListener('mouseup', e => { if (e.button === 0 && cardDragStart) { const dx = e.clientX - cardDragStart.x; if (dx > 40) { cardDragConsumed = true; openInBackground(cardDragStart.card.dataset.linkUrl); } } cardDragStart = null; });
 
