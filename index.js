@@ -122,7 +122,7 @@ const HTML_CONTENT = `
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #custom-tooltip { position: fixed; display: none; z-index: 3001; background: var(--primary); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); pointer-events: none; line-height: 1.5; max-width: 300px; word-wrap: break-word; }
+
         #general-dialog { z-index: 2500; }
         .btn-third { background-color: var(--info); color: white; }
         #loading-mask { z-index: 3000; }
@@ -238,7 +238,6 @@ const HTML_CONTENT = `
     <div class="dialog-overlay" id="backup-modal"><div class="dialog-box" style="width:550px;max-width:90%;padding:0;overflow:hidden"><div style="padding:20px;border-bottom:1px solid var(--border)"><h3 style="margin:0;font-size:18px;color:var(--text-color);text-align:left">历史备份节点列表</h3><p style="margin:5px 0 0;font-size:12px;color:#888">我们为您在云端最多保留10个历史备份节点。</p></div><div style="padding:20px"><div class="backup-header-info"><span id="last-backup-time" style="font-size:13px;color:var(--text-color)">加载中...</span><button class="btn-base btn-confirm" onclick="handleManualBackup()" style="padding:6px 15px;min-width:auto">🚀 立即备份</button></div><h4 style="margin:0 0 10px;font-size:14px;color:var(--text-color)">云端历史备份节点</h4><div id="backup-list-container" class="backup-list-wrapper"></div></div><div style="padding:15px 20px;background-color:var(--input-bg);text-align:right;border-top:1px solid var(--border)"><button class="btn-base btn-cancel" onclick="hideDialog('backup-modal')">关闭</button></div></div></div>
     <div class="dialog-overlay" id="general-dialog"><div class="dialog-box"><h3 class="dialog-title" id="general-dialog-title">提示</h3><div id="general-dialog-content" style="margin-bottom:20px;text-align:center;color:var(--text-color);line-height:1.5"></div><input type="text" id="general-dialog-input" style="display:none"><div class="dialog-buttons"><button class="btn-base btn-cancel" style="display:none" id="general-cancel">取消</button><button class="btn-base btn-confirm" id="general-confirm">确定</button></div></div></div>
     <div id="loading-mask" class="dialog-overlay" style="z-index:3000"><div class="dialog-box"><div class="spinner"></div><p id="loading-text" style="color:var(--text-color)">正在进入设置模式...</p></div></div>
-    <div id="custom-tooltip"></div>
 
     <script>
     const APP_VERSION = '1.0.2';
@@ -606,10 +605,8 @@ const HTML_CONTENT = `
         overlay.innerHTML = '<div class="overlay-half left"><div class="action-btn-square btn-edit-card" onclick="event.stopPropagation();showLinkDialog(\\\'' + eu + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right"><div class="action-btn-square btn-del-card" onclick="event.stopPropagation();removeCard(\\\'' + eu + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
         card.appendChild(overlay);
         
-        if(!state.isAdmin) { 
-            /* 对齐 8972dh 的 a.site-card: 卡片不绑定任何鼠标事件, 让浏览器原生超级拖拽/点击/中键完全接管 */
-        } else { 
-            // 提取的拖拽逻辑：开始
+        if(isAdminMode) { 
+            // 管理员模式：拖拽排序逻辑（非管理员为纯<a>链接，浏览器原生接管点击/中键/超拽）
             card.ondragstart = e => { 
                 draggedCard = card;
                 card.classList.add('dragging');
@@ -859,7 +856,6 @@ const HTML_CONTENT = `
             if (dd && dd.classList.contains('show')) { dd.classList.remove('show'); renderSections(); }
         }
     }
-    function showTooltip(e,t) { if(!t) return; const tt=el('custom-tooltip'); tt.textContent=t; tt.style.display='block'; const offset = 15; let x = e.clientX + offset; let y = e.clientY + offset; const rect = tt.getBoundingClientRect(); if(x + rect.width > window.innerWidth) x = e.clientX - rect.width - 5; if(y + rect.height > window.innerHeight) y = e.clientY - rect.height - 5; tt.style.left = x + 'px'; tt.style.top = y + 'px'; }
     function toggleTheme() { const d = document.body.classList.toggle('dark-theme'); localStorage.setItem('theme', d?'dark':'light'); }
     function scrollToTop() { window.scrollTo({ top:0, behavior:'smooth' }); }
     function updateActiveCategory() { const sections = document.querySelectorAll('.section'); if (!sections.length) return; const header = document.querySelector('.fixed-elements'); const headerHeight = header ? header.offsetHeight : 0; const triggerPoint = window.scrollY + headerHeight + 20; let currentId = ''; sections.forEach(section => { const sectionTop = section.offsetTop; if (sectionTop <= triggerPoint) { currentId = section.id; } }); if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 10) { if(sections.length) currentId = sections[sections.length - 1].id; } const buttons = document.querySelectorAll('.category-button'); buttons.forEach(btn => { if (btn.textContent === currentId) { btn.classList.add('active'); } else { btn.classList.remove('active'); } }); }
