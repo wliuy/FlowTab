@@ -262,9 +262,9 @@ const HTML_CONTENT = `
 
     const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
     const searchEngines = { baidu: "https://www.baidu.com/s?wd=", bing: "https://www.bing.com/search?q=", google: "https://www.google.com/search?q=", duckduckgo: "https://duckduckgo.com/?q=" };
-    function openInBackground(url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.style.display = 'none'; document.body.appendChild(a); a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, ctrlKey: true })); a.remove(); }
-    let cardDragStart = null, cardDragConsumed = false;
-    document.addEventListener('mouseup', e => { if (e.button === 0 && cardDragStart) { const dx = e.clientX - cardDragStart.x; if (dx > 40) { cardDragConsumed = true; openInBackground(cardDragStart.card.dataset.linkUrl); } } cardDragStart = null; });
+    let cardDragStart = null, cardDragOpenedClick = false;
+    document.addEventListener('mousemove', e => { if (cardDragStart && !cardDragStart.opened && (e.buttons & 1) && (e.clientX - cardDragStart.x > 40)) { cardDragStart.opened = true; window.open(cardDragStart.card.dataset.linkUrl, '_blank'); } });
+    document.addEventListener('mouseup', e => { if (e.button === 0 && cardDragStart && cardDragStart.opened) cardDragOpenedClick = true; cardDragStart = null; });
 
     async function api(url, method='GET', body=null) { const opts = { method, headers: {'Content-Type': 'application/json'} }; if(state.token) opts.headers['Authorization'] = state.token; if(body) opts.body = JSON.stringify(body); try { const res = await fetch(url, opts); if(res.status === 401) { resetLogin(); customAlert('登录已过期，请重新登录'); return { error: 'auth' }; } if(!res.ok) return { error: 'Status '+res.status }; return await res.json(); } catch(e) { return { error: e.message }; } }
 
@@ -605,8 +605,8 @@ const HTML_CONTENT = `
         
         if(!state.isAdmin) { 
             card.dataset.linkUrl = link.url.startsWith('http')?link.url:'http://'+link.url; 
-            card.onmousedown = e => { if (e.button === 1) e.preventDefault(); if (e.button === 0) { cardDragStart = { x: e.clientX, card }; cardDragConsumed = false; } }; 
-            card.onclick = e => { if (e.button === 0 && !cardDragConsumed) window.open(card.dataset.linkUrl, '_blank'); cardDragStart = null; cardDragConsumed = false; }; 
+            card.onmousedown = e => { if (e.button === 1) e.preventDefault(); if (e.button === 0) { cardDragStart = { x: e.clientX, card, opened: false }; cardDragOpenedClick = false; } }; 
+            card.onclick = e => { if (e.button === 0) { if (cardDragOpenedClick) { cardDragOpenedClick = false; e.preventDefault(); return; } window.open(card.dataset.linkUrl, '_blank'); } }; 
             card.onauxclick = e => { if (e.button === 1) { e.preventDefault(); window.open(card.dataset.linkUrl, '_blank'); } }; 
             card.onmousemove = e => showTooltip(e, link.tips); 
             card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; 
