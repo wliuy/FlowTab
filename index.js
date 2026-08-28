@@ -508,7 +508,8 @@ const HTML_CONTENT = `
         const card = document.createElement(isAdminMode ? 'div' : 'a');
         if(!isAdminMode){ card.href = cardUrl; card.target = '_blank'; card.rel = 'noopener'; }
         card.className = 'card ' + (state.isEditMode ? 'no-hover' : '');
-        card.draggable = state.isAdmin; 
+        /* 对齐 8972dh: 非管理员不设置 draggable, 保持<a>链接原生可拖拽(拖到标签栏/书签栏/超拽); 仅管理员排序时开启 */
+        if(isAdminMode) card.draggable = true; 
         card.dataset.url = link.url; 
         card.style.setProperty('--card-index', cont.children.length);
         
