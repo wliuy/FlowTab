@@ -62,8 +62,8 @@ const HTML_CONTENT = `
         .card-add span { font-size: 12px; margin-top: 4px; }
 
         .card-container { display: grid; grid-template-columns: repeat(auto-fill, 170px); gap: 15px; padding: 15px 5px; justify-content: center; }
-        /* 优化：增加 user-select: none 防止拖拽时选中文本 */
-        .card { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); cursor: pointer; transition: all 0.3s ease; position: relative; animation: fadeIn 0.3s ease forwards; opacity: 0; animation-delay: calc(var(--card-index) * 0.05s); display: flex; flex-direction: column; justify-content: center; overflow: hidden; user-select: none; -webkit-user-select: none; }
+        /* 对齐 8972dh 的 a.site-card: 不设置 user-select:none, 保证浏览器原生超级拖拽手势正常识别 */
+        .card { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); cursor: pointer; transition: all 0.3s ease; position: relative; animation: fadeIn 0.3s ease forwards; opacity: 0; animation-delay: calc(var(--card-index) * 0.05s); display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
         /* 卡片本身就是链接: 去掉锚点默认样式, 保留原生点击/中键/超级拖拽能力 */
         a.card { text-decoration: none; color: inherit; }
         /* 管理员模式下，卡片本身变为移动光标 */
@@ -606,8 +606,7 @@ const HTML_CONTENT = `
         card.appendChild(overlay);
         
         if(!state.isAdmin) { 
-            card.onmousemove = e => showTooltip(e, link.tips); 
-            card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; 
+            /* 对齐 8972dh 的 a.site-card: 卡片不绑定任何鼠标事件, 让浏览器原生超级拖拽/点击/中键完全接管 */
         } else { 
             // 提取的拖拽逻辑：开始
             card.ondragstart = e => { 
