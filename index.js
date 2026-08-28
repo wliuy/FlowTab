@@ -262,8 +262,9 @@ const HTML_CONTENT = `
 
     const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
     const searchEngines = { baidu: "https://www.baidu.com/s?wd=", bing: "https://www.bing.com/search?q=", google: "https://www.google.com/search?q=", duckduckgo: "https://duckduckgo.com/?q=" };
+    function openInBackground(url) { const w = window.open(url, '_blank'); if (w) { try { w.opener = null; } catch(e){} try { w.blur(); window.focus(); } catch(e){} } }
     let cardDragStart = null, cardDragConsumed = false;
-    document.addEventListener('mouseup', e => { if (e.button === 0 && cardDragStart) { const dx = e.clientX - cardDragStart.x; if (dx > 40) { cardDragConsumed = true; window.open(cardDragStart.card.dataset.linkUrl, '_blank'); } } cardDragStart = null; });
+    document.addEventListener('mouseup', e => { if (e.button === 0 && cardDragStart) { const dx = e.clientX - cardDragStart.x; if (dx > 40) { cardDragConsumed = true; openInBackground(cardDragStart.card.dataset.linkUrl); } } cardDragStart = null; });
 
     async function api(url, method='GET', body=null) { const opts = { method, headers: {'Content-Type': 'application/json'} }; if(state.token) opts.headers['Authorization'] = state.token; if(body) opts.body = JSON.stringify(body); try { const res = await fetch(url, opts); if(res.status === 401) { resetLogin(); customAlert('登录已过期，请重新登录'); return { error: 'auth' }; } if(!res.ok) return { error: 'Status '+res.status }; return await res.json(); } catch(e) { return { error: e.message }; } }
 
