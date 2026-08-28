@@ -602,8 +602,10 @@ const HTML_CONTENT = `
         
         if(!state.isAdmin) { 
             const openCard = () => window.open(link.url.startsWith('http')?link.url:'http://'+link.url, '_blank'); 
-            card.onmousedown = e => { if (e.button === 1) e.preventDefault(); }; 
-            card.onclick = e => { if (e.button === 0) openCard(); }; 
+            let dragStartX = null, suppressClick = false; 
+            card.onmousedown = e => { if (e.button === 0) { dragStartX = e.clientX; suppressClick = false; } if (e.button === 1) e.preventDefault(); }; 
+            card.onmouseup = e => { if (e.button === 0 && dragStartX !== null) { const dx = e.clientX - dragStartX; dragStartX = null; if (dx > 40) { suppressClick = true; openCard(); } } }; 
+            card.onclick = e => { if (e.button === 0 && !suppressClick) openCard(); suppressClick = false; }; 
             card.onauxclick = e => { if (e.button === 1) { e.preventDefault(); openCard(); } }; 
             card.onmousemove = e => showTooltip(e, link.tips); 
             card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; 
