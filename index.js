@@ -64,6 +64,8 @@ const HTML_CONTENT = `
         .card-container { display: grid; grid-template-columns: repeat(auto-fill, 170px); gap: 15px; padding: 15px 5px; justify-content: center; }
         /* 优化：增加 user-select: none 防止拖拽时选中文本 */
         .card { background-color: var(--card-bg); border-radius: 8px; padding: 12px; width: 100%; box-shadow: 0 3px 10px var(--shadow); border-left: 3px solid var(--primary); cursor: pointer; transition: all 0.3s ease; position: relative; animation: fadeIn 0.3s ease forwards; opacity: 0; animation-delay: calc(var(--card-index) * 0.05s); display: flex; flex-direction: column; justify-content: center; overflow: hidden; user-select: none; -webkit-user-select: none; }
+        /* 卡片本身就是链接: 去掉锚点默认样式, 保留原生点击/中键/超级拖拽能力 */
+        a.card { text-decoration: none; color: inherit; }
         /* 管理员模式下，卡片本身变为移动光标 */
         .admin-mode .card { cursor: move; }
         .card:hover:not(.no-hover) { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1); }
@@ -501,7 +503,10 @@ const HTML_CONTENT = `
     let draggedCard = null;
 
     function createCard(link, cont) {
-        const card = document.createElement('div');
+        const isAdminMode = state.isAdmin;
+        const cardUrl = link.url.startsWith('http')?link.url:'http://'+link.url;
+        const card = document.createElement(isAdminMode ? 'div' : 'a');
+        if(!isAdminMode){ card.href = cardUrl; card.target = '_blank'; card.rel = 'noopener'; }
         card.className = 'card ' + (state.isEditMode ? 'no-hover' : '');
         card.draggable = state.isAdmin; 
         card.dataset.url = link.url; 
@@ -601,9 +606,6 @@ const HTML_CONTENT = `
         card.appendChild(overlay);
         
         if(!state.isAdmin) { 
-            card.dataset.linkUrl = link.url.startsWith('http')?link.url:'http://'+link.url; 
-            card.onmousedown = e => { if (e.button === 1) e.preventDefault(); if (e.button === 0) window.open(card.dataset.linkUrl, '_blank'); }; 
-            card.onauxclick = e => { if (e.button === 1) { e.preventDefault(); window.open(card.dataset.linkUrl, '_blank'); } }; 
             card.onmousemove = e => showTooltip(e, link.tips); 
             card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; 
         } else { 
