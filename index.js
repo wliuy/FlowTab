@@ -601,7 +601,9 @@ const HTML_CONTENT = `
         card.appendChild(overlay);
         
         if(!state.isAdmin) { 
-            card.onclick = () => window.open(link.url.startsWith('http')?link.url:'http://'+link.url, '_blank'); 
+            const openCard = () => window.open(link.url.startsWith('http')?link.url:'http://'+link.url, '_blank'); 
+            card.onclick = e => { if (e.button === 0) openCard(); }; 
+            card.onauxclick = e => { if (e.button === 1) { e.preventDefault(); openCard(); } }; 
             card.onmousemove = e => showTooltip(e, link.tips); 
             card.onmouseleave = () => el('custom-tooltip').style.display = 'none'; 
         } else { 
