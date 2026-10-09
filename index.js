@@ -385,7 +385,7 @@ const HTML_CONTENT = `
         
         // 优化：使用常量 USER ID
         const res = await api('/api/getLinks?userId=' + CURRENT_USER_ID); 
-        if (res.error === 'auth') return resetLogin(); 
+        if (res.error) return; // 云端异常(如 KV 超额)时保留本地缓存与当前渲染，避免被覆盖为空数据
         
         // 数据深度比对：如果云端数据与当前已加载状态一致，则不刷新页面
         const allLinks = res.links || [];
@@ -838,7 +838,7 @@ const HTML_CONTENT = `
     function moveCategory(n, d) { const k = Object.keys(state.categories); const i = k.indexOf(n); if(i+d>=0 && i+d<k.length) { const t=k[i]; k[i]=k[i+d]; k[i+d]=t; const nc={}; k.forEach(x=>nc[x]=state.categories[x]); state.categories=nc; renderSections(); updateCategoryButtons(); updateUI(); } }
     // 优化：使用常量 USER ID
     async function saveData() { showLoading('保存...'); const res = await api('/api/saveOrder', 'POST', {userId: CURRENT_USER_ID, links:state.links, categories:state.categories}); if(!res.error) { localStorage.setItem('flowtab_cache_' + CURRENT_USER_ID, JSON.stringify({links:state.links, categories:state.categories})); } hideLoading(); renderSections(); }
-    async function validateToken() { if(!state.token) return false; const res = await api('/api/getLinks?userId=' + CURRENT_USER_ID); return res.error !== 'auth'; }
+    async function validateToken() { if(!state.token) return false; const res = await api('/api/validateToken'); return !!res.valid; }
     function handleLoginClick() { if(state.isLoggedIn) customConfirm('确定要退出登录？').then(y=>{if(y) resetLogin()}); else { showDialog('login-modal'); el('login-password').value=''; const inp = el('login-password'); setTimeout(()=>inp.focus(),100); inp.onkeypress = (e) => { if(e.key==='Enter') performLogin(); }; } }
     function resetLogin() { state.token=null; localStorage.removeItem('authToken'); state.isLoggedIn=false; state.isAdmin=false; state.isEditMode=false; loadLinks(); }
     async function performLogin() { const p = el('login-password').value; if(!p) return; showLoading('登录...'); const res = await api('/api/verifyPassword', 'POST', {password:p}); hideLoading(); if(res.valid) { state.token=res.token; localStorage.setItem('authToken', res.token); state.isLoggedIn=true; state.isAdmin=false; state.isEditMode=false; hideDialog('login-modal'); customAlert('登录成功'); loadLinks(); } else customAlert('密码错误'); }
@@ -1093,6 +1093,45 @@ function encodeBase64(str) {
 // User ID 常量
 const DEFAULT_USER = 'testUser';
 
+// 边缘缓存时长（秒）：越大越省 KV 读额度，代价是数据更新略有延迟（写入时会主动清除）
+const EDGE_CACHE_TTL = 60;
+
+/**
+ * 读取边缘缓存，命中返回响应体文本，未命中返回 null
+ */
+async function edgeCacheMatch(cacheKeyUrl) {
+    try {
+        const hit = await caches.default.match(new Request(cacheKeyUrl));
+        if (hit) return await hit.text();
+    } catch (e) {}
+    return null;
+}
+
+/**
+ * 写入边缘缓存（异步，不阻塞响应）。缓存键为独立的内部 URL，不含 Authorization，避免被判定为不可缓存
+ */
+function edgeCachePut(cacheKeyUrl, body, contentType, ctx) {
+    try {
+        const resp = new Response(body, {
+            headers: {
+                'Content-Type': contentType,
+                'Cache-Control': `public, max-age=${EDGE_CACHE_TTL}`
+            }
+        });
+        ctx.waitUntil(caches.default.put(new Request(cacheKeyUrl), resp).catch(() => {}));
+    } catch (e) {}
+}
+
+/**
+ * 清除首页与访客 getLinks 的边缘缓存（写入数据后调用，保证立即可见）
+ */
+async function purgeEdgeCache(origin, userId) {
+    await Promise.allSettled([
+        caches.default.delete(new Request(origin + '/__edge/home')),
+        caches.default.delete(new Request(origin + '/__edge/getLinks?userId=' + encodeURIComponent(userId || DEFAULT_USER)))
+    ]);
+}
+
 export default {
     async fetch(req, env, ctx) {
         const url = new URL(req.url);
@@ -1114,12 +1153,23 @@ export default {
         // 3. 首页渲染 (SSR)
         // ============================================================
         if (path === '/') {
-            // 并行获取数据和一言
-            const tasks = [
-                env.CARD_ORDER.get(DEFAULT_USER).catch(() => null),
+            // 边缘缓存：优先命中，避免每次访问都读取 KV，降低额度消耗
+            const cachedHtml = await edgeCacheMatch(url.origin + '/__edge/home');
+            if (cachedHtml !== null) {
+                return new Response(cachedHtml, {
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate'
+                    }
+                });
+            }
+
+            // 并行获取数据和一言（区分“无数据”与“KV 读取失败”，失败时不写缓存）
+            const [kvResult, hitokotoText] = await Promise.all([
+                env.CARD_ORDER.get(DEFAULT_USER).then(v => ({ ok: true, v })).catch(() => ({ ok: false, v: null })),
                 fetchHitokotoServer()
-            ];
-            const [rawUserData, hitokotoText] = await Promise.all(tasks);
+            ]);
+            const rawUserData = kvResult.v;
 
             let inject = '<script>window.__INITIAL_DATA_B64__=null;window.__INITIAL_HITOKOTO__=null;</script>';
             let scriptParts = [];
@@ -1146,7 +1196,9 @@ export default {
                 inject = `<script>${scriptParts.join('')}</script>`;
             }
 
-            return new Response(HTML_CONTENT.replace('<!--INJECT_DATA-->', inject), {
+            const html = HTML_CONTENT.replace('<!--INJECT_DATA-->', inject);
+            if (kvResult.ok) edgeCachePut(url.origin + '/__edge/home', html, 'text/html', ctx);
+            return new Response(html, {
                 headers: {
                     'Content-Type': 'text/html',
                     'Cache-Control': 'no-cache, no-store, must-revalidate'
@@ -1281,18 +1333,44 @@ export default {
         // 6. 获取链接数据 (区分权限)
         // ============================================================
         if (path === '/api/getLinks') {
-            const userId = url.searchParams.get('userId');
-            const raw = await env.CARD_ORDER.get(userId);
-            const data = raw ? JSON.parse(raw) : { links: [], categories: {} };
-
+            const userId = url.searchParams.get('userId') || DEFAULT_USER;
             const check = await auth(req, env);
+
+            // 仅缓存访客(公开数据)响应：管理员需实时数据，且避免私密链接被缓存泄露
+            const edgeKey = url.origin + '/__edge/getLinks?userId=' + encodeURIComponent(userId);
+            if (!check.ok) {
+                const cachedJson = await edgeCacheMatch(edgeKey);
+                if (cachedJson !== null) {
+                    try { return jsonRes(JSON.parse(cachedJson)); } catch (e) {}
+                }
+            }
+
+            let data;
+            try {
+                const raw = await env.CARD_ORDER.get(userId);
+                data = raw ? JSON.parse(raw) : { links: [], categories: {} };
+            } catch (e) {
+                // KV 额度用尽等异常：返回 503，前端保留本地缓存，站点仍可访问
+                return jsonRes({ error: 'kv_unavailable', message: '存储暂不可用（可能 KV 额度已用尽）' }, 503);
+            }
+
             if (check.ok) return jsonRes(data); // 管理员返回全部数据
 
             // 访客仅返回公开数据
-            return jsonRes({
+            const publicData = {
                 links: data.links.filter(l => !l.isPrivate),
                 categories: data.categories
-            });
+            };
+            edgeCachePut(edgeKey, JSON.stringify(publicData), 'application/json', ctx);
+            return jsonRes(publicData);
+        }
+
+        // ============================================================
+        // 6.1 轻量校验 Token（不读写 KV，避免额外额度消耗）
+        // ============================================================
+        if (path === '/api/validateToken') {
+            const check = await auth(req, env);
+            return jsonRes({ valid: check.ok });
         }
 
         // ============================================================
@@ -1306,6 +1384,7 @@ export default {
             if (path === '/api/saveOrder' && req.method === 'POST') {
                 const { userId, links, categories } = await req.json();
                 await env.CARD_ORDER.put(userId, JSON.stringify({ links, categories }));
+                await purgeEdgeCache(url.origin, userId);
                 return jsonRes({ success: true });
             }
 
@@ -1339,7 +1418,7 @@ export default {
             if (path === '/api/restoreFromBackup' && req.method === 'POST') {
                 const { userId, backupId } = await req.json();
                 const data = await env.CARD_ORDER.get(backupId);
-                if (data) await env.CARD_ORDER.put(userId, data);
+                if (data) { await env.CARD_ORDER.put(userId, data); await purgeEdgeCache(url.origin, userId); }
                 return jsonRes({ success: !!data });
             }
 
