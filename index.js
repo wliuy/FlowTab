@@ -298,7 +298,7 @@ const HTML_CONTENT = `
             });
     }
 
-    function updateFavicon(theme) { }
+
 
     // 辅助：Base64 解码 (处理 UTF-8 字符)
     function decodeBase64(str) {
@@ -385,7 +385,14 @@ const HTML_CONTENT = `
         
         // 优化：使用常量 USER ID
         const res = await api('/api/getLinks?userId=' + CURRENT_USER_ID); 
-        if (res.error) return; // 云端异常(如 KV 超额)时保留本地缓存与当前渲染，避免被覆盖为空数据
+        if (res.error) {
+            if (res.error === 'auth') {
+                // api() 已处理登录态重置，这里只需保留缓存不重新渲染空数据
+                return;
+            }
+            // kv_unavailable 等：保留本地缓存与当前渲染，避免被覆盖为空数据
+            return;
+        }
         
         // 数据深度比对：如果云端数据与当前已加载状态一致，则不刷新页面
         const allLinks = res.links || [];
@@ -600,9 +607,8 @@ const HTML_CONTENT = `
         }
         
         const overlay = document.createElement('div'); overlay.className = 'card-click-overlay';
-        // 调整：移除按钮的 onmousedown="event.stopPropagation()"，允许拖拽按钮区域进行移动
-        const eu = escAttr(link.url);
-        overlay.innerHTML = '<div class="overlay-half left"><div class="action-btn-square btn-edit-card" onclick="event.stopPropagation();showLinkDialog(\\\'' + eu + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right"><div class="action-btn-square btn-del-card" onclick="event.stopPropagation();removeCard(\\\'' + eu + '\\\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
+        overlay.dataset.cardUrl = link.url;
+        overlay.innerHTML = '<div class="overlay-half left"><div class="action-btn-square btn-edit-card" data-action="edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div><div class="overlay-half right"><div class="action-btn-square btn-del-card" data-action="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div></div>';
         card.appendChild(overlay);
         
         if(isAdminMode) { 
@@ -914,8 +920,22 @@ const HTML_CONTENT = `
     window.addEventListener('scroll', () => { el('back-to-top-btn').style.display = window.scrollY > 300 ? 'flex' : 'none'; updateActiveCategory(); });
     window.addEventListener('load', updateActiveCategory); window.addEventListener('resize', updateActiveCategory);
 
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        const btn = target.closest('.action-btn-square[data-action]');
+        if (btn && state.isAdmin) {
+            e.stopPropagation();
+            const overlay = btn.closest('.card-click-overlay');
+            const url = overlay ? overlay.dataset.cardUrl : null;
+            if (!url) return;
+            const action = btn.dataset.action;
+            if (action === 'edit') showLinkDialog(url);
+            if (action === 'del') removeCard(url);
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', async () => {
-        if(localStorage.getItem('theme')==='dark') { document.body.classList.add('dark-theme'); updateFavicon('dark'); }
+        if(localStorage.getItem('theme')==='dark') { document.body.classList.add('dark-theme'); }
         if(await validateToken()) { state.isLoggedIn=true; updateUI(); }
         loadLinks();
         setTimeout(fetchHitokoto, 100); 
@@ -1158,14 +1178,18 @@ export default {
         // ============================================================
         if (path === '/') {
             // 边缘缓存：优先命中，避免每次访问都读取 KV，降低额度消耗
-            const cachedHtml = await edgeCacheMatch(url.origin + '/__edge/home');
-            if (cachedHtml !== null) {
-                return new Response(cachedHtml, {
-                    headers: {
-                        'Content-Type': 'text/html',
-                        'Cache-Control': 'no-cache, no-store, must-revalidate'
-                    }
-                });
+            // 管理员（有 Authorization）访问时跳过匿名缓存，避免短暂显示公开视图
+            const skipEdgeCache = !!req.headers.get('Authorization');
+            if (!skipEdgeCache) {
+                const cachedHtml = await edgeCacheMatch(url.origin + '/__edge/home');
+                if (cachedHtml !== null) {
+                    return new Response(cachedHtml, {
+                        headers: {
+                            'Content-Type': 'text/html',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate'
+                        }
+                    });
+                }
             }
 
             // 并行获取数据和一言（区分“无数据”与“KV 读取失败”，失败时不写缓存）
@@ -1192,8 +1216,9 @@ export default {
 
             // 注入一言数据
             if (hitokotoText) {
-                const safeText = hitokotoText.replace(/"/g, '\\"');
-                scriptParts.push(`window.__INITIAL_HITOKOTO__="${safeText}";`);
+            // 转义引号和反斜杠，避免 JS 字符串注入
+            const safeText = String(hitokotoText).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            scriptParts.push(`window.__INITIAL_HITOKOTO__="${safeText}";`);
             }
 
             if (scriptParts.length > 0) {
@@ -1201,7 +1226,7 @@ export default {
             }
 
             const html = HTML_CONTENT.replace('<!--INJECT_DATA-->', inject);
-            if (kvResult.ok) edgeCachePut(url.origin + '/__edge/home', html, 'text/html', ctx);
+            if (kvResult.ok && !skipEdgeCache) edgeCachePut(url.origin + '/__edge/home', html, 'text/html', ctx);
             return new Response(html, {
                 headers: {
                     'Content-Type': 'text/html',
