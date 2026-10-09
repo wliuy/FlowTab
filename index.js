@@ -846,7 +846,7 @@ const HTML_CONTENT = `
     function handleImportClick() { const i = document.createElement('input'); i.type='file'; i.accept='.json'; i.onchange = e => { const f = e.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = async evt => { try { const l = JSON.parse(evt.target.result); l.forEach(x=>{ if(!state.categories[x.category]) state.categories[x.category]=[]; const idx = state.links.findIndex(k=>k.url===x.url); if(idx>=0) state.links[idx]=x; else state.links.push(x); }); await saveData(); customAlert('导入成功'); } catch(e) { customAlert('格式错误'); } }; r.readAsText(f); }; i.click(); }
     async function showBackupManager() { if(!await validateToken()) return; showDialog('backup-modal'); const c = el('backup-list-container'); c.innerHTML = '<div style="padding:20px;text-align:center;color:#888">加载中...</div>'; const l = await api('/api/listBackups'); c.innerHTML = ''; if(Array.isArray(l) && l.length) { l.sort((a, b) => b.localeCompare(a)); const format = (k) => { const s = k.replace('backup_', ''); if (s.length >= 15) { return s.substring(0, 4) + '-' + s.substring(4, 6) + '-' + s.substring(6, 8) + ' ' + s.substring(9, 11) + ':' + s.substring(11, 13) + ':' + s.substring(13, 15); } return s; }; el('last-backup-time').textContent = '最新：📅 ' + format(l[0]); l.forEach(k => { const d = document.createElement('div'); d.className = 'backup-item'; const name = document.createElement('span'); name.textContent = '📅 ' + format(k); const act = document.createElement('div'); act.className = 'backup-actions'; const res = document.createElement('a'); res.className = 'restore-link'; res.textContent = '从此节点恢复'; res.onclick = () => restoreBackup(k); const del = document.createElement('span'); del.className = 'trash-icon'; del.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>'; del.onclick = () => deleteBackup(k); act.appendChild(res); act.appendChild(del); d.appendChild(name); d.appendChild(act); c.appendChild(d); }); } else { c.innerHTML = '<div style="padding:20px;text-align:center;color:#888">暂无备份</div>'; el('last-backup-time').textContent = '暂无备份'; } }
     async function handleManualBackup() { if(await customConfirm('创建新备份？')) { showLoading('备份...'); await api('/api/backupData', 'POST', {sourceUserId:'testUser'}); hideLoading(); showBackupManager(); } }
-    async function restoreBackup(id) { if(await customConfirm('确定恢复？当前未保存修改将丢失。')) { showLoading('恢复...'); const r = await api('/api/restoreFromBackup', 'POST', {userId:'testUser', backupId:id}); hideLoading(); if(r.success) { hideDialog('backup-modal'); loadLinks(); customAlert('成功'); } else customAlert('失败'); } }
+    async function restoreBackup(id) { if(await customConfirm('确定恢复？当前未保存修改将丢失。')) { showLoading('恢复...'); const r = await api('/api/restoreFromBackup', 'POST', {userId: CURRENT_USER_ID, backupId:id}); hideLoading(); if(r.success) { hideDialog('backup-modal'); loadLinks(); customAlert('成功'); } else customAlert('失败'); } }
     async function deleteBackup(id) { if(await customConfirm('删除此备份？')) { showLoading('删除...'); await api('/api/deleteBackup', 'POST', {backupId:id}); hideLoading(); showBackupManager(); } }
     function toggleBookmarkSearch() { const dd = el('bookmark-search-dropdown'); dd.classList.toggle('show'); if(dd.classList.contains('show')) { const i = el('bookmark-search-input'); i.focus(); i.oninput = e => { const q = e.target.value.toLowerCase(); if(!q) return renderSections(); el('sections-container').innerHTML = '<div class="section"><div class="card-container" id="s-res"></div></div>'; const c = el('s-res'); state.links.filter(l=>l.name.toLowerCase().includes(q)).forEach(l=>createCard(l,c)); } } else renderSections(); }
     window.onclick = function(e) {
@@ -962,6 +962,10 @@ async function auth(req, env, requireAdmin = false) {
     if (!token) return { ok: false, err: '未登录' };
 
     try {
+        // 强制要求环境变量中配置管理员密码
+        if (!env.ADMIN_PASSWORD) {
+            return { ok: false, err: '未配置管理员密码' };
+        }
         const parts = token.split('.');
         if (parts.length === 3) {
             // 新格式: timestamp.nonce.hash
@@ -988,7 +992,7 @@ async function auth(req, env, requireAdmin = false) {
                 return { ok: false, err: '无效Token' };
             }
         }
-        return { ok: true };
+        return { ok: true, userId: DEFAULT_USER };
     } catch {
         return { ok: false, err: '验证异常' };
     }
@@ -1317,6 +1321,7 @@ export default {
         // 5. 登录/密码验证
         // ============================================================
         if (path === '/api/verifyPassword' && req.method === 'POST') {
+            if (!env.ADMIN_PASSWORD) return jsonRes({ valid: false, message: '未配置管理员密码' }, 500);
             const { password } = await req.json();
             if (password !== env.ADMIN_PASSWORD) return jsonRes({ valid: false }, 403);
 
@@ -1382,7 +1387,9 @@ export default {
         try {
             // 7. 保存数据
             if (path === '/api/saveOrder' && req.method === 'POST') {
-                const { userId, links, categories } = await req.json();
+                let { userId, links, categories } = await req.json();
+                // 后端强制绑定 userId，防止越权
+                userId = check.userId || userId || DEFAULT_USER;
                 await env.CARD_ORDER.put(userId, JSON.stringify({ links, categories }));
                 await purgeEdgeCache(url.origin, userId);
                 return jsonRes({ success: true });
@@ -1391,7 +1398,8 @@ export default {
             // 8. 创建备份
             if (path === '/api/backupData' && req.method === 'POST') {
                 const { sourceUserId } = await req.json();
-                const data = await env.CARD_ORDER.get(sourceUserId);
+                const sid = check.userId || sourceUserId || DEFAULT_USER;
+                const data = await env.CARD_ORDER.get(sid);
                 if (!data) return jsonRes({ success: false, message: '无数据' });
 
                 const d = new Date(new Date().getTime() + 8 * 3600 * 1000); // UTC+8
@@ -1416,7 +1424,8 @@ export default {
 
             // 10. 从备份恢复
             if (path === '/api/restoreFromBackup' && req.method === 'POST') {
-                const { userId, backupId } = await req.json();
+                let { userId, backupId } = await req.json();
+                userId = check.userId || userId || DEFAULT_USER;
                 const data = await env.CARD_ORDER.get(backupId);
                 if (data) { await env.CARD_ORDER.put(userId, data); await purgeEdgeCache(url.origin, userId); }
                 return jsonRes({ success: !!data });
