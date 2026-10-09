@@ -45,6 +45,9 @@ const HTML_CONTENT = `
         .bookmark-search-dropdown input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-size: 13px; box-sizing: border-box; background-color: var(--input-bg); color: var(--text-color); }
         .header-btn { background-color: var(--primary); color: white; border: none; border-radius: 4px; padding: 0 15px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.3s; }
         .header-btn:hover { background-color: var(--primary-hover); }
+        .header-btn:disabled { opacity: 0.5; cursor: default; }
+        .header-btn.dirty { background-color: var(--danger); animation: savePulse 1.2s infinite; }
+        @keyframes savePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.5); } 50% { box-shadow: 0 0 0 6px rgba(231,76,60,0); } }
         
         .content { margin-top: 180px; padding: 10px; max-width: 1500px; margin-left: auto; margin-right: auto; padding-bottom: 100px; }
         .section-title-container { display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 8px; scroll-margin-top: 180px; }
@@ -188,6 +191,7 @@ const HTML_CONTENT = `
             <div id="category-buttons-container" class="category-buttons-container"></div>
         </div>
         <div class="top-right-controls">
+            <button class="header-btn" id="save-btn" onclick="handleSaveClick()" style="display: none;">保存</button>
             <button class="header-btn" id="admin-btn" onclick="handleAdminBtnClick()" style="display: none;">离开设置</button>
             <button class="header-btn" id="login-btn" onclick="handleLoginClick()">登录</button>
             <div class="bookmark-search-toggle" onclick="toggleBookmarkSearch()">
@@ -261,7 +265,7 @@ const HTML_CONTENT = `
     function customConfirm3(msg, btnOkText, btnThirdText, btnCancelText='取消') { return new Promise(resolve => { el('general-dialog-title').textContent = '确认'; el('general-dialog-content').textContent = msg; el('general-dialog-input').style.display = 'none'; el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = btnCancelText; el('general-confirm').textContent = btnOkText; let thirdBtn = el('general-dialog').querySelector('.btn-third'); if (!thirdBtn) { thirdBtn = document.createElement('button'); thirdBtn.className = 'btn-base btn-third'; thirdBtn.style.display = 'inline-block'; el('general-confirm').parentNode.insertBefore(thirdBtn, el('general-cancel')); } thirdBtn.textContent = btnThirdText; thirdBtn.style.display = 'inline-block'; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true), nThird = thirdBtn.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); thirdBtn.parentNode.replaceChild(nThird, thirdBtn); nOk.onclick = () => { hideDialog('general-dialog'); resolve('ok'); }; nThird.onclick = () => { hideDialog('general-dialog'); resolve('third'); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve('cancel'); }; }); }
     function customPrompt(title, val='') { return new Promise(resolve => { el('general-dialog-title').textContent = title; el('general-dialog-content').textContent = ''; const inp = el('general-dialog-input'); inp.style.display = 'block'; inp.value = val; inp.focus(); el('general-cancel').style.display = 'inline-block'; el('general-cancel').textContent = '取消'; const thirdBtn = el('general-dialog').querySelector('.btn-third'); if (thirdBtn) thirdBtn.style.display = 'none'; showDialog('general-dialog'); setTimeout(()=>inp.focus(), 100); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = () => { hideDialog('general-dialog'); resolve(inp.value.trim()); }; nCancel.onclick = () => { hideDialog('general-dialog'); resolve(null); }; inp.onkeypress = (e) => { if(e.key==='Enter') nOk.click(); }; }); }
 
-    const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false };
+    const state = { engine: localStorage.getItem('se')||"baidu", token: localStorage.getItem('authToken'), links: [], publicLinks: [], privateLinks: [], categories: {}, isAdmin: false, isLoggedIn: false, isEditMode: false, isDirty: false, isSaving: false };
     const searchEngines = { baidu: "https://www.baidu.com/s?wd=", bing: "https://www.bing.com/search?q=", google: "https://www.google.com/search?q=", duckduckgo: "https://duckduckgo.com/?q=" };
 
     async function api(url, method='GET', body=null) { const opts = { method, headers: {'Content-Type': 'application/json'} }; if(state.token) opts.headers['Authorization'] = state.token; if(body) opts.body = JSON.stringify(body); try { const res = await fetch(url, opts); if(res.status === 401) { resetLogin(); customAlert('登录已过期，请重新登录'); return { error: 'auth' }; } if(!res.ok) return { error: 'Status '+res.status }; return await res.json(); } catch(e) { return { error: e.message }; } }
@@ -423,6 +427,7 @@ const HTML_CONTENT = `
             container.style.opacity = '1';
         }
 
+        markClean();
         scheduleLayout();
     }
 
@@ -681,7 +686,7 @@ const HTML_CONTENT = `
         if(newLinks.length > 0) {
             state.links = newLinks;
             syncDerived();
-            // saveData(); // 移除自动保存，改为退出时统一保存
+            markDirty();
         }
     }
 
@@ -716,11 +721,11 @@ const HTML_CONTENT = `
         scheduleLayout();
     }
 
-    async function handleAdminBtnClick() { if (state.isAdmin) { el('general-dialog-title').textContent = '提示'; el('general-dialog-content').textContent = '是否要保存您在设置模式中所做的修改？'; el('general-dialog-input').style.display='none'; el('general-cancel').style.display='inline-block'; el('general-cancel').textContent='不保存'; el('general-confirm').textContent='保存'; const thirdBtn = el('general-dialog').querySelector('.btn-third'); if (thirdBtn) thirdBtn.style.display = 'none'; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = async () => { hideDialog('general-dialog'); await saveData(); state.isAdmin = false; state.isEditMode = false; updateUI(); renderSections(); customAlert('设置已保存'); }; nCancel.onclick = () => { hideDialog('general-dialog'); state.isAdmin = false; state.isEditMode = false; updateUI(); loadLinks(); customAlert('已放弃修改'); }; } else { if(!await validateToken()) return; showLoading('正在进入设置模式...'); try { 
+    async function handleAdminBtnClick() { if (state.isAdmin) { if (!state.isDirty) { state.isAdmin = false; state.isEditMode = false; updateUI(); renderSections(); return; } el('general-dialog-title').textContent = '提示'; el('general-dialog-content').textContent = '是否要保存您在设置模式中所做的修改？'; el('general-dialog-input').style.display='none'; el('general-cancel').style.display='inline-block'; el('general-cancel').textContent='不保存'; el('general-confirm').textContent='保存'; const thirdBtn = el('general-dialog').querySelector('.btn-third'); if (thirdBtn) thirdBtn.style.display = 'none'; showDialog('general-dialog'); const ok = el('general-confirm'), cancel = el('general-cancel'); const nOk = ok.cloneNode(true), nCancel = cancel.cloneNode(true); ok.parentNode.replaceChild(nOk, ok); cancel.parentNode.replaceChild(nCancel, cancel); nOk.onclick = async () => { hideDialog('general-dialog'); await saveData(); state.isAdmin = false; state.isEditMode = false; updateUI(); renderSections(); customAlert('设置已保存'); }; nCancel.onclick = () => { hideDialog('general-dialog'); state.isAdmin = false; state.isEditMode = false; updateUI(); loadLinks(); customAlert('已放弃修改'); }; } else { if(!await validateToken()) return; showLoading('正在进入设置模式...'); try { 
         // 优化：使用常量 USER ID
-        await api('/api/backupData', 'POST', {sourceUserId: CURRENT_USER_ID}); } catch(e){} hideLoading(); state.isAdmin = true; state.isEditMode = true; updateUI(); renderSections(); updateCategoryButtons(); } }
+        await api('/api/backupData', 'POST', {sourceUserId: CURRENT_USER_ID}); } catch(e){} hideLoading(); state.isAdmin = true; state.isEditMode = true; markClean(); updateUI(); renderSections(); updateCategoryButtons(); } }
     
-    function updateUI() { const loginBtn = el('login-btn'); const adminBtn = el('admin-btn'); if (state.isLoggedIn) { loginBtn.textContent = '退出登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'inline-block'; adminBtn.textContent = state.isAdmin ? '离开设置' : '设置'; } else { loginBtn.textContent = '登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'none'; } document.querySelector('.add-remove-controls').style.display = state.isAdmin ? 'flex' : 'none'; if(state.isAdmin) document.body.classList.add('admin-mode'); else document.body.classList.remove('admin-mode'); const s = el('category-select'); if(s) { s.innerHTML=''; Object.keys(state.categories).forEach(k=>s.add(new Option(k,k))); } scheduleLayout(); }
+    function updateUI() { const loginBtn = el('login-btn'); const adminBtn = el('admin-btn'); const saveBtn = el('save-btn'); if (state.isLoggedIn) { loginBtn.textContent = '退出登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'inline-block'; adminBtn.textContent = state.isAdmin ? '离开设置' : '设置'; saveBtn.style.display = state.isAdmin ? 'inline-block' : 'none'; } else { loginBtn.textContent = '登录'; loginBtn.style.display = 'inline-block'; adminBtn.style.display = 'none'; saveBtn.style.display = 'none'; } document.querySelector('.add-remove-controls').style.display = state.isAdmin ? 'flex' : 'none'; if(state.isAdmin) document.body.classList.add('admin-mode'); else document.body.classList.remove('admin-mode'); const s = el('category-select'); if(s) { s.innerHTML=''; Object.keys(state.categories).forEach(k=>s.add(new Option(k,k))); } updateSaveButton(); scheduleLayout(); }
     
     // 修复：showLinkDialog 清空候选图标
     function showLinkDialogForCategory(cat) {
@@ -832,18 +837,24 @@ const HTML_CONTENT = `
         
         // 重新派生子数组
         syncDerived();
+        markDirty();
         
         renderSections(); 
         hideDialog('link-dialog'); 
     }
 
-    async function removeCard(url) { if(await customConfirm('确定删除吗？删除后点击保存生效。')) { state.links = state.links.filter(l=>l.url!==url); syncDerived(); renderSections(); } }
-    async function addCategory() { const n = await customPrompt('新分类名称'); if(n) { if(state.categories[n]) return customAlert('分类已存在'); state.categories[n] = []; renderSections(); updateCategoryButtons(); updateUI(); } }
-    async function editCategory(old) { const n = await customPrompt('重命名分类', old); if(n && n!==old) { if(state.categories[n]) return customAlert('分类已存在'); const nc = {}; Object.keys(state.categories).forEach(k=>{ if(k===old) nc[n]=state.categories[old]; else nc[k]=state.categories[k]}); state.categories = nc; state.links.forEach(l=>{ if(l.category===old) l.category=n; }); renderSections(); updateCategoryButtons(); updateUI(); } }
-    async function delCategory(n) { if(await customConfirm('删除分类及所有链接？')) { delete state.categories[n]; state.links = state.links.filter(l=>l.category!==n); syncDerived(); renderSections(); updateCategoryButtons(); updateUI(); } }
-    function moveCategory(n, d) { const k = Object.keys(state.categories); const i = k.indexOf(n); if(i+d>=0 && i+d<k.length) { const t=k[i]; k[i]=k[i+d]; k[i+d]=t; const nc={}; k.forEach(x=>nc[x]=state.categories[x]); state.categories=nc; renderSections(); updateCategoryButtons(); updateUI(); } }
+    async function removeCard(url) { if(await customConfirm('确定删除吗？删除后点击保存生效。')) { state.links = state.links.filter(l=>l.url!==url); syncDerived(); markDirty(); renderSections(); } }
+    async function addCategory() { const n = await customPrompt('新分类名称'); if(n) { if(state.categories[n]) return customAlert('分类已存在'); state.categories[n] = []; markDirty(); renderSections(); updateCategoryButtons(); updateUI(); } }
+    async function editCategory(old) { const n = await customPrompt('重命名分类', old); if(n && n!==old) { if(state.categories[n]) return customAlert('分类已存在'); const nc = {}; Object.keys(state.categories).forEach(k=>{ if(k===old) nc[n]=state.categories[old]; else nc[k]=state.categories[k]}); state.categories = nc; state.links.forEach(l=>{ if(l.category===old) l.category=n; }); markDirty(); renderSections(); updateCategoryButtons(); updateUI(); } }
+    async function delCategory(n) { if(await customConfirm('删除分类及所有链接？')) { delete state.categories[n]; state.links = state.links.filter(l=>l.category!==n); syncDerived(); markDirty(); renderSections(); updateCategoryButtons(); updateUI(); } }
+    function moveCategory(n, d) { const k = Object.keys(state.categories); const i = k.indexOf(n); if(i+d>=0 && i+d<k.length) { const t=k[i]; k[i]=k[i+d]; k[i+d]=t; const nc={}; k.forEach(x=>nc[x]=state.categories[x]); state.categories=nc; markDirty(); renderSections(); updateCategoryButtons(); updateUI(); } }
+    function markDirty() { state.isDirty = true; updateSaveButton(); }
+    function markClean() { state.isDirty = false; updateSaveButton(); }
+    function updateSaveButton() { const b = el('save-btn'); if(!b) return; b.disabled = !state.isDirty || state.isSaving; b.classList.toggle('dirty', state.isDirty); }
     // 优化：使用常量 USER ID
-    async function saveData() { showLoading('保存...'); const res = await api('/api/saveOrder', 'POST', {userId: CURRENT_USER_ID, links:state.links, categories:state.categories}); if(!res.error) { localStorage.setItem('flowtab_cache_' + CURRENT_USER_ID, JSON.stringify({links:state.links, categories:state.categories})); } hideLoading(); renderSections(); }
+    async function saveData() { showLoading('保存...'); const res = await api('/api/saveOrder', 'POST', {userId: CURRENT_USER_ID, links:state.links, categories:state.categories}); if(!res.error) { localStorage.setItem('flowtab_cache_' + CURRENT_USER_ID, JSON.stringify({links:state.links, categories:state.categories})); markClean(); } hideLoading(); renderSections(); updateSaveButton(); }
+    async function handleSaveClick() { if(!state.isAdmin || state.isSaving) return; state.isSaving = true; updateSaveButton(); await saveData(); state.isSaving = false; updateSaveButton(); }
+    document.addEventListener('keydown', e => { if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && state.isAdmin) { e.preventDefault(); handleSaveClick(); } });
     async function validateToken() { if(!state.token) return false; const res = await api('/api/validateToken'); return !!res.valid; }
     function handleLoginClick() { if(state.isLoggedIn) customConfirm('确定要退出登录？').then(y=>{if(y) resetLogin()}); else { showDialog('login-modal'); el('login-password').value=''; const inp = el('login-password'); setTimeout(()=>inp.focus(),100); inp.onkeypress = (e) => { if(e.key==='Enter') performLogin(); }; } }
     function resetLogin() { state.token=null; localStorage.removeItem('authToken'); state.isLoggedIn=false; state.isAdmin=false; state.isEditMode=false; loadLinks(); }
